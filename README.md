@@ -158,11 +158,9 @@ cd BusinessPulse
 
 ### 3. Frontend Setup
 
-The frontend (`crmDashboard-nextjs`) should be in a separate directory. If you have it:
-
 1. **Navigate to frontend directory:**
    ```bash
-   cd ../crmDashboard-nextjs  # Adjust path as needed
+   cd crmDashboard-nextjs
    ```
 
 2. **Install dependencies:**
@@ -171,8 +169,17 @@ The frontend (`crmDashboard-nextjs`) should be in a separate directory. If you h
    ```
 
 3. **Create `.env.local` file:**
+   ```bash
+   cp .env.example .env.local
+   ```
+   
+   Or create `.env.local` manually:
    ```env
-   NEXT_PUBLIC_API_URL=http://localhost:8001
+   # Backend API URL (server-side only, used by Next.js API routes)
+   BACKEND_API_URL=http://127.0.0.1:8001
+   
+   # Optional: App configuration
+   NEXT_PUBLIC_APP_URL=http://localhost:3000
    ```
 
 4. **Start the development server:**
@@ -181,6 +188,8 @@ The frontend (`crmDashboard-nextjs`) should be in a separate directory. If you h
    ```
 
 The frontend will be available at `http://localhost:3000`
+
+**Note:** The frontend uses Next.js API routes that proxy requests to the backend. The backend URL is configured server-side only (via `BACKEND_API_URL`) and is never exposed to the client browser.
 
 ## 📁 Project Structure
 
@@ -191,7 +200,7 @@ BusinessPulse/
 │   │   ├── __init__.py
 │   │   ├── main.py              # FastAPI application entry point
 │   │   ├── db.py                # Database connection
-│   │   ├── models.py            # SQLAlchemy models
+│   │   ├── models.py             # SQLAlchemy models
 │   │   ├── schemas.py           # Pydantic schemas
 │   │   ├── settings.py          # Configuration settings
 │   │   ├── routes/               # API routes
@@ -223,6 +232,19 @@ BusinessPulse/
 │   │   └── docker-compose.yml   # Docker Compose configuration
 │   ├── Dockerfile               # Backend Docker image
 │   └── requirements.txt         # Python dependencies
+├── crmDashboard-nextjs/         # Frontend (Next.js 15)
+│   ├── src/
+│   │   ├── app/                  # Next.js app router
+│   │   │   ├── api/             # Next.js API routes (proxies to backend)
+│   │   │   └── dashboard/       # Dashboard pages
+│   │   ├── components/          # React components
+│   │   ├── api/                 # API client and services
+│   │   ├── lib/                 # Utilities and config
+│   │   └── page-components/    # Page-specific components
+│   ├── public/                  # Static assets
+│   ├── package.json
+│   ├── next.config.ts
+│   └── .env.example             # Environment variables template
 ├── RAG_TEST_QUERIES.md          # Test queries for RAG system
 └── README.md                     # This file
 ```
@@ -240,6 +262,16 @@ BusinessPulse/
 | `PINECONE_INDEX` | Pinecone index name | Yes | - |
 | `PINECONE_NAMESPACE` | Pinecone namespace | No | `default` |
 | `UPLOAD_DIR` | Directory for uploaded files | No | `app/storage/uploads` |
+
+### Frontend Environment Variables
+
+Create `.env.local` in the `crmDashboard-nextjs` directory:
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `BACKEND_API_URL` | Backend API URL (server-side only) | No | `http://127.0.0.1:8001` |
+| `API_URL` | Alternative backend URL variable | No | `http://127.0.0.1:8001` |
+| `NEXT_PUBLIC_APP_URL` | Frontend app URL | No | `http://localhost:3000` |
 
 ### Pinecone Index Setup
 
