@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile
+from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
 from pathlib import Path
@@ -24,13 +24,18 @@ router = APIRouter()
 
 
 @router.post("/{customer_id}/questionnaire/generate")
-def generate(customer_id: str, db: Session = Depends(get_db)):
+def generate(
+    customer_id: str,
+    project_id: str | None = Query(None, description="Project ID to associate questionnaire with"),
+    db: Session = Depends(get_db),
+):
     try:
         data = generate_questionnaire(customer_id=customer_id)
 
         # 1) Create Questionnaire record
         qn = models.Questionnaire(
             customer_id=customer_id,
+            project_id=project_id,
             title=data.get("title") or "Requirements Clarification Questionnaire",
             status="draft",
         )
@@ -87,9 +92,11 @@ def generate(customer_id: str, db: Session = Depends(get_db)):
                 with open(pdf_file_path, "wb") as f:
                     f.write(pdf_bytes)
                 
-                # Create Document record for the questionnaire PDF
+                # Create Document record for the questionnaire PDF (as project document)
                 questionnaire_doc = models.Document(
                     customer_id=customer_id,
+                    project_id=project_id,
+                    document_category="project",
                     doc_type="questionnaire",
                     filename=pdf_filename,
                     storage_path=pdf_file_path,

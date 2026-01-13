@@ -9,28 +9,80 @@ export interface Document {
   id: string;
   customer_id: string;
   project_id?: string | null;
+  document_category: "project" | "customer";
   doc_type: string;
   filename: string;
   storage_path: string;
   uploaded_at?: string;
 }
 
-export type DocType = "meeting_minutes" | "requirements" | "email" | "questionnaire" | "questionnaire_response" | "proposal";
+export type DocumentCategory = "project" | "customer";
+
+// Project document types
+export type ProjectDocType =
+  | "meeting_minutes"
+  | "requirements"
+  | "questionnaire"
+  | "questionnaire_response"
+  | "proposal"
+  | "design_sdd"
+  | "kickoff_meeting"
+  | "instruction_manual"
+  | "maintenance_doc";
+
+// Customer document types
+export type CustomerDocType =
+  | "invoice"
+  | "payment_doc"
+  | "nda"
+  | "contract"
+  | "correspondence"
+  | "other";
+
+// Combined doc type (for backward compatibility)
+export type DocType =
+  | "meeting_minutes"
+  | "requirements"
+  | "email" // Legacy
+  | "questionnaire"
+  | "questionnaire_response"
+  | "proposal"
+  | "design_sdd"
+  | "kickoff_meeting"
+  | "instruction_manual"
+  | "maintenance_doc"
+  | "invoice"
+  | "payment_doc"
+  | "nda"
+  | "contract"
+  | "correspondence"
+  | "other";
 
 export interface DocumentUpload {
   doc_type: DocType;
+  document_category: DocumentCategory;
   file: File;
   project_id?: string | null;
 }
 
 export const documentsService = {
   /**
-   * Get all documents for a customer, optionally filtered by project_id (via SSR API route)
+   * Get all documents for a customer, optionally filtered by project_id and/or document_category (via SSR API route)
    */
-  async getCustomerDocuments(customerId: string, projectId?: string | null): Promise<Document[]> {
-    const url = projectId
-      ? `/customers/${customerId}/documents?project_id=${projectId}`
-      : `/customers/${customerId}/documents`;
+  async getCustomerDocuments(
+    customerId: string,
+    projectId?: string | null,
+    documentCategory?: DocumentCategory
+  ): Promise<Document[]> {
+    const params = new URLSearchParams();
+    if (projectId) {
+      params.append("project_id", projectId);
+    }
+    if (documentCategory) {
+      params.append("document_category", documentCategory);
+    }
+    const queryString = params.toString();
+    const url = `/customers/${customerId}/documents${queryString ? `?${queryString}` : ""}`;
     const response = await apiClient.get<Document[]>(url);
     const data = response.data;
     return Array.isArray(data) ? data : [];
@@ -104,9 +156,16 @@ export const documentsService = {
     window.URL.revokeObjectURL(downloadUrl);
   },
 
-  async uploadDocument(customerId: string, docType: DocType, file: File, projectId?: string | null) {
+  async uploadDocument(
+    customerId: string,
+    docType: DocType,
+    documentCategory: DocumentCategory,
+    file: File,
+    projectId?: string | null
+  ) {
     const formData = new FormData();
     formData.append("doc_type", docType);
+    formData.append("document_category", documentCategory);
     formData.append("file", file);
     if (projectId) {
       formData.append("project_id", projectId);

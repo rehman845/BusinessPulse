@@ -1,9 +1,10 @@
 import { ProjectDetailPage } from "@/page-components/projects/project-detail-page";
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default function Page({ params }: PageProps) {
-  return <ProjectDetailPage projectId={params.id} />;
+export default async function Page({ params }: PageProps) {
+  const { id } = await params;
+  return <ProjectDetailPage projectId={id} />;
 }

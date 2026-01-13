@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileQuestion } from "lucide-react";
-import { ROUTES } from "@/constants";
 
 /**
  * NotFound Component
@@ -30,7 +29,7 @@ export default function NotFound() {
         </CardContent>
         <CardFooter className="flex justify-center">
           <Button asChild>
-            <Link href={ROUTES.DASHBOARD.ROOT}>
+            <Link href="/dashboard">
               Go to Dashboard
             </Link>
           </Button>

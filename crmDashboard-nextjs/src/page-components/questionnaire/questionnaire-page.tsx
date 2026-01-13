@@ -273,7 +273,7 @@ export function QuestionnairePage() {
             <div className="text-center">
               <FileQuestion className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-sm text-muted-foreground">
-                Click "Generate Questionnaire" to create a questionnaire for this customer
+                Click &quot;Generate Questionnaire&quot; to create a questionnaire for this customer
               </p>
             </div>
           </CardContent>

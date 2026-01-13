@@ -3,21 +3,12 @@ import { getBackendUrl } from "@/lib/backend-config";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const { id } = await params;
-    const searchParams = request.nextUrl.searchParams;
-    const projectId = searchParams.get("project_id");
-    const documentCategory = searchParams.get("document_category");
-    
+    const { projectId } = await params;
     const backendUrl = getBackendUrl();
-    const queryParams = new URLSearchParams();
-    if (projectId) queryParams.append("project_id", projectId);
-    if (documentCategory) queryParams.append("document_category", documentCategory);
-    
-    const queryString = queryParams.toString();
-    const url = `${backendUrl}/customers/${id}/documents${queryString ? `?${queryString}` : ""}`;
+    const url = `${backendUrl}/projects/${projectId}/resources`;
     
     const response = await fetch(url, {
       method: "GET",
@@ -38,7 +29,7 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     return NextResponse.json(
-      { error: error.message || "Failed to fetch documents" },
+      { error: error.message || "Failed to fetch resources" },
       { status: 500 }
     );
   }
@@ -46,16 +37,20 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const { id } = await params;
-    const formData = await request.formData();
-    
+    const { projectId } = await params;
+    const body = await request.json();
     const backendUrl = getBackendUrl();
-    const response = await fetch(`${backendUrl}/customers/${id}/documents/upload`, {
+    const url = `${backendUrl}/projects/${projectId}/resources`;
+    
+    const response = await fetch(url, {
       method: "POST",
-      body: formData,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -70,7 +65,7 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     return NextResponse.json(
-      { error: error.message || "Failed to upload document" },
+      { error: error.message || "Failed to create resource" },
       { status: 500 }
     );
   }

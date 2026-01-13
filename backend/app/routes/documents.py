@@ -18,6 +18,7 @@ router = APIRouter()
 def upload_document(
     customer_id: str,
     doc_type: schemas.DocType = Form(...),
+    document_category: schemas.DocumentCategory = Form(...),
     file: UploadFile = File(...),
     project_id: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -26,8 +27,19 @@ def upload_document(
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
+    # Validate: project docs must have project_id, customer docs should not require it
+    if document_category == "project" and not project_id:
+        raise HTTPException(status_code=400, detail="Project documents must have a project_id")
+    
     try:
-        doc = ingest_document(db=db, customer_id=customer_id, doc_type=doc_type, upload_file=file, project_id=project_id)
+        doc = ingest_document(
+            db=db,
+            customer_id=customer_id,
+            doc_type=doc_type,
+            upload_file=file,
+            project_id=project_id,
+            document_category=document_category
+        )
         return doc
     except Exception as e:
         # Update document status to failed if it exists
@@ -39,9 +51,10 @@ def upload_document(
 def list_customer_documents(
     customer_id: str,
     project_id: str | None = Query(None, description="Filter documents by project ID"),
+    document_category: str | None = Query(None, description="Filter by document category: 'project' or 'customer'"),
     db: Session = Depends(get_db),
 ):
-    """List all documents for a customer, optionally filtered by project_id. Excludes soft-deleted documents."""
+    """List all documents for a customer, optionally filtered by project_id and/or document_category. Excludes soft-deleted documents."""
     customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -52,6 +65,8 @@ def list_customer_documents(
     )
     if project_id:
         query = query.filter(models.Document.project_id == project_id)
+    if document_category:
+        query = query.filter(models.Document.document_category == document_category)
     
     docs = query.all()
     return docs
@@ -350,44 +365,50 @@ def reindex_document(
     document.processing_status = "processing"
     db.commit()
     
-    # Chunk and index
-    chunks = chunk_text(extracted, chunk_size=900, overlap=150)
-    
-    for i, ch in enumerate(chunks):
-        vector = embed_text(ch)
-        vector_id = f"{document.id}_{i}"
+    # Only index project documents in Pinecone (skip customer documents)
+    if document.document_category == "project":
+        # Chunk and index
+        chunks = chunk_text(extracted, chunk_size=900, overlap=150)
         
-        metadata = {
-            "customer_id": customer_id,
-            "document_id": document.id,
-            "chunk_index": i,
-            "doc_type": document.doc_type,
-            "uploaded_at": document.uploaded_at.isoformat(),
-            "text": ch,
-        }
-        
-        # Add enriched metadata
-        if customer:
-            if customer.name:
-                metadata["customer_name"] = customer.name
-        if document.filename:
-            metadata["document_filename"] = document.filename
-        
-        if document.project_id is not None:
-            metadata["project_id"] = document.project_id
-        
-        pinecone_index.upsert(
-            vectors=[{"id": vector_id, "values": vector, "metadata": metadata}],
-            namespace=namespace if namespace else None,
-        )
-        
-        chunk_row = models.Chunk(
-            document_id=document.id,
-            chunk_index=i,
-            chunk_text=ch,
-            pinecone_vector_id=vector_id,
-        )
-        db.add(chunk_row)
+        for i, ch in enumerate(chunks):
+            vector = embed_text(ch)
+            vector_id = f"{document.id}_{i}"
+            
+            metadata = {
+                "customer_id": customer_id,
+                "document_id": document.id,
+                "chunk_index": i,
+                "doc_type": document.doc_type,
+                "document_category": "project",  # Always "project" for indexed documents
+                "uploaded_at": document.uploaded_at.isoformat(),
+                "text": ch,
+            }
+            
+            # Add enriched metadata
+            if customer:
+                if customer.name:
+                    metadata["customer_name"] = customer.name
+            if document.filename:
+                metadata["document_filename"] = document.filename
+            
+            if document.project_id is not None:
+                metadata["project_id"] = document.project_id
+            
+            pinecone_index.upsert(
+                vectors=[{"id": vector_id, "values": vector, "metadata": metadata}],
+                namespace=namespace if namespace else None,
+            )
+            
+            chunk_row = models.Chunk(
+                document_id=document.id,
+                chunk_index=i,
+                chunk_text=ch,
+                pinecone_vector_id=vector_id,
+            )
+            db.add(chunk_row)
+    else:
+        # Customer documents are not indexed in Pinecone
+        pass
     
     document.processing_status = "completed"
     db.commit()

@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Loader2, Users, Trash2 } from "lucide-react";
+import { Plus, Loader2, Users, Trash2, UserPlus, Calendar, Hash, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
 
 export function CustomersPage() {
   const router = useRouter();
@@ -78,31 +79,43 @@ export function CustomersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Customers</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Users className="h-8 w-8 text-primary" />
+            Customers
+          </h1>
+          <p className="text-muted-foreground mt-2">
             Manage your customers and their information
           </p>
         </div>
       </div>
 
       {/* Create Customer Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Create New Customer</CardTitle>
+      <Card className="border-2 border-dashed">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
+            Create New Customer
+          </CardTitle>
           <CardDescription>Add a new customer to the system</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleCreateCustomer} className="flex gap-2">
+          <form onSubmit={handleCreateCustomer} className="flex flex-col sm:flex-row gap-3">
             <Input
-              placeholder="Customer name"
+              placeholder="Enter customer name..."
               value={newCustomerName}
               onChange={(e) => setNewCustomerName(e.target.value)}
               disabled={creating}
-              className="max-w-sm"
+              className="flex-1"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !creating && newCustomerName.trim()) {
+                  handleCreateCustomer(e as any);
+                }
+              }}
             />
-            <Button type="submit" disabled={creating || !newCustomerName.trim()}>
+            <Button type="submit" disabled={creating || !newCustomerName.trim()} className="sm:w-auto w-full">
               {creating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -111,7 +124,7 @@ export function CustomersPage() {
               ) : (
                 <>
                   <Plus className="mr-2 h-4 w-4" />
-                  Create
+                  Create Customer
                 </>
               )}
             </Button>
@@ -122,65 +135,119 @@ export function CustomersPage() {
       {/* Customers List */}
       <Card>
         <CardHeader>
-          <CardTitle>All Customers</CardTitle>
-          <CardDescription>
-            {customers.length} {customers.length === 1 ? "customer" : "customers"} in total. Click a row to open the customer workspace.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                All Customers
+              </CardTitle>
+              <CardDescription className="mt-1">
+                {loading ? (
+                  "Loading customers..."
+                ) : (
+                  <>
+                    {customers.length} {customers.length === 1 ? "customer" : "customers"} in total
+                    {customers.length > 0 && ". Click a row to open the customer workspace."}
+                  </>
+                )}
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Loading customers...</p>
+              </div>
             </div>
           ) : customers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Users className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No customers yet. Create your first customer above!</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="rounded-full bg-muted p-6 mb-4">
+                <Users className="h-12 w-12 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">No customers yet</h3>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">
+                Get started by creating your first customer. You can then upload documents, manage projects, and track interactions.
+              </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Created At</TableHead>
-                  <TableHead>ID</TableHead>
-                  <TableHead className="w-[80px] text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {customers.map((customer) => (
-                  <TableRow
-                    key={customer.id}
-                    className="cursor-pointer hover:bg-muted/60"
-                    onClick={() => router.push(`/dashboard/customers/${customer.id}`)}
-                  >
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell>
-                      {customer.created_at
-                        ? new Date(customer.created_at).toLocaleDateString()
-                        : "N/A"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-sm">
-                      {customer.id}
-                    </TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteCustomer(customer.id)}
-                        disabled={deletingId === customer.id}
-                      >
-                        {deletingId === customer.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        )}
-                      </Button>
-                    </TableCell>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[300px]">Customer Name</TableHead>
+                    <TableHead className="w-[150px]">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        Created At
+                      </div>
+                    </TableHead>
+                    <TableHead>
+                      <div className="flex items-center gap-2">
+                        <Hash className="h-4 w-4" />
+                        Customer ID
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {customers.map((customer, index) => (
+                    <TableRow
+                      key={customer.id}
+                      className="cursor-pointer hover:bg-muted/50 transition-colors group"
+                      onClick={() => router.push(`/dashboard/customers/${customer.id}`)}
+                    >
+                      <TableCell className="font-semibold">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
+                            {customer.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="group-hover:text-primary transition-colors">{customer.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.created_at
+                          ? format(new Date(customer.created_at), "MMM dd, yyyy")
+                          : "N/A"}
+                      </TableCell>
+                      <TableCell>
+                        <code className="text-xs bg-muted px-2 py-1 rounded text-muted-foreground font-mono">
+                          {customer.id.slice(0, 8)}...
+                        </code>
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => router.push(`/dashboard/customers/${customer.id}`)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteCustomer(customer.id)}
+                            disabled={deletingId === customer.id}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            {deletingId === customer.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

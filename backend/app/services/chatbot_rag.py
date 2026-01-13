@@ -48,6 +48,7 @@ def search_all_documents(query: str, top_k: int = 20, min_score: float = 0.3, in
         vector=query_vector,
         top_k=top_k * 2,  # Get more results for deduplication
         include_metadata=True,
+        filter={"document_category": {"$eq": "project"}},  # Only search project documents
     )
     
     if namespace:
@@ -75,6 +76,7 @@ def search_all_documents(query: str, top_k: int = 20, min_score: float = 0.3, in
             vector=query_vector_orig,
             top_k=top_k,
             include_metadata=True,
+            filter={"document_category": {"$eq": "project"}},  # Only search project documents
         )
         if namespace:
             query_kwargs_orig["namespace"] = namespace
@@ -714,7 +716,8 @@ def chatbot_query(user_query: str, top_k: int = 20, min_score: float = 0.2, db_s
             include_metadata=True,
             filter={
                 "customer_id": {"$eq": target_customer_id},
-                "doc_type": {"$eq": "questionnaire_response"}
+                "doc_type": {"$eq": "questionnaire_response"},
+                "document_category": {"$eq": "project"}  # Only search project documents
             }
         )
         if namespace:
@@ -754,7 +757,8 @@ def chatbot_query(user_query: str, top_k: int = 20, min_score: float = 0.2, db_s
             include_metadata=True,
             filter={
                 "customer_id": {"$eq": target_customer_id},
-                "doc_type": {"$eq": "proposal"}
+                "doc_type": {"$eq": "proposal"},
+                "document_category": {"$eq": "project"}  # Only search project documents
             }
         )
         if namespace:
@@ -791,7 +795,8 @@ def chatbot_query(user_query: str, top_k: int = 20, min_score: float = 0.2, db_s
             include_metadata=True,
             filter={
                 "customer_id": {"$eq": target_customer_id},
-                "doc_type": {"$eq": doc_type_filter}
+                "doc_type": {"$eq": doc_type_filter},
+                "document_category": {"$eq": "project"}  # Only search project documents
             }
         )
         if namespace:

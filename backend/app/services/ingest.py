@@ -65,7 +65,7 @@ def _extract_text(file_path: str) -> tuple[str, int | None]:
         return "", page_count
 
 
-def ingest_document(db: Session, customer_id: str, doc_type: str, upload_file: UploadFile, project_id: str | None = None) -> models.Document:
+def ingest_document(db: Session, customer_id: str, doc_type: str, upload_file: UploadFile, project_id: str | None = None, document_category: str = "project") -> models.Document:
     
     # 1) Save file
     file_path = _save_upload(customer_id, upload_file)
@@ -88,6 +88,7 @@ def ingest_document(db: Session, customer_id: str, doc_type: str, upload_file: U
     doc = models.Document(
         customer_id=customer_id,
         project_id=project_id,
+        document_category=document_category,
         doc_type=doc_type,
         filename=upload_file.filename,
         storage_path=file_path,
@@ -118,60 +119,66 @@ def ingest_document(db: Session, customer_id: str, doc_type: str, upload_file: U
     customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
     customer_name = customer.name if customer else None
     
-    # 5) Chunk and store chunks (use improved chunking if available)
-    if USE_IMPROVED_CHUNKING:
-        chunks = chunk_text_improved(extracted, chunk_size=900, overlap=150)
+    # Only index project documents in Pinecone (skip customer documents)
+    if document_category == "project":
+        # 5) Chunk and store chunks (use improved chunking if available)
+        if USE_IMPROVED_CHUNKING:
+            chunks = chunk_text_improved(extracted, chunk_size=900, overlap=150)
+        else:
+            chunks = chunk_text(extracted, chunk_size=900, overlap=150)
+        
+        for i, ch in enumerate(chunks):
+            vector = embed_text(ch)
+
+            vector_id = f"{doc.id}_{i}"
+            namespace = (settings.PINECONE_NAMESPACE or "").strip()
+
+            # Build metadata with enrichment (customer_name, document_filename)
+            metadata = {
+                "customer_id": customer_id,
+                "document_id": doc.id,
+                "chunk_index": i,
+                "doc_type": doc_type,
+                "document_category": "project",  # Always "project" for indexed documents
+                "uploaded_at": doc.uploaded_at.isoformat(),
+                "text": ch,
+            }
+            
+            # Add enriched metadata
+            if customer_name:
+                metadata["customer_name"] = customer_name
+            if doc.filename:
+                metadata["document_filename"] = doc.filename
+            
+            # Only include project_id if it's not None
+            if project_id is not None:
+                metadata["project_id"] = project_id
+
+            pinecone_index.upsert(
+                vectors=[
+                    {
+                        "id": vector_id,
+                        "values": vector,
+                        "metadata": metadata,
+                    }
+                ],
+                # ✅ This is what creates "context" namespace
+                namespace=namespace if namespace else None,
+            )
+
+            row = models.Chunk(
+                document_id=doc.id,
+                chunk_index=i,
+                chunk_text=ch,
+                pinecone_vector_id=vector_id,
+            )
+            db.add(row)
+
+        db.commit()
     else:
-        chunks = chunk_text(extracted, chunk_size=900, overlap=150)
-    
-    for i, ch in enumerate(chunks):
-        vector = embed_text(ch)
-
-        vector_id = f"{doc.id}_{i}"
-        namespace = (settings.PINECONE_NAMESPACE or "").strip()
-
-        # Build metadata with enrichment (customer_name, document_filename)
-        metadata = {
-            "customer_id": customer_id,
-            "document_id": doc.id,
-            "chunk_index": i,
-            "doc_type": doc_type,
-            "uploaded_at": doc.uploaded_at.isoformat(),
-            "text": ch,
-        }
-        
-        # Add enriched metadata
-        if customer_name:
-            metadata["customer_name"] = customer_name
-        if doc.filename:
-            metadata["document_filename"] = doc.filename
-        
-        # Only include project_id if it's not None
-        if project_id is not None:
-            metadata["project_id"] = project_id
-
-        pinecone_index.upsert(
-            vectors=[
-                {
-                    "id": vector_id,
-                    "values": vector,
-                    "metadata": metadata,
-                }
-            ],
-            # ✅ This is what creates "context" namespace
-            namespace=namespace if namespace else None,
-        )
-
-
-        row = models.Chunk(
-            document_id=doc.id,
-            chunk_index=i,
-            chunk_text=ch,
-            pinecone_vector_id=vector_id,
-        )
-        db.add(row)
-
-    db.commit()
+        # Customer documents are not indexed in Pinecone
+        # Still store the document in the database, but no chunks/embeddings
+        pass
     
 
     return doc

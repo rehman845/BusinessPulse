@@ -17,6 +17,7 @@ import {
   Briefcase,
   Receipt,
   MessageSquare,
+  UserCog,
   type LucideIcon,
 } from "lucide-react";
 
@@ -95,14 +96,14 @@ export const mainNavigation: NavItem[] = [
     icon: BarChart3,
   },
   {
-    title: "Documents",
-    url: "/dashboard/documents",
-    icon: FolderOpen,
-  },
-  {
     title: "Customers",
     url: "/dashboard/customers",
     icon: Users,
+  },
+  {
+    title: "Resources",
+    url: "/dashboard/resources",
+    icon: UserCog,
   },
   {
     title: "Forms",

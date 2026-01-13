@@ -3,7 +3,51 @@ from typing import Literal, List, Optional
 from datetime import datetime
 
 
-DocType = Literal["meeting_minutes", "requirements", "email", "questionnaire", "questionnaire_response", "proposal"]
+# Document categories
+DocumentCategory = Literal["project", "customer"]
+
+# Project document types
+ProjectDocType = Literal[
+    "meeting_minutes",
+    "requirements",
+    "questionnaire",
+    "questionnaire_response",
+    "proposal",
+    "design_sdd",  # System Design Document
+    "kickoff_meeting",
+    "instruction_manual",
+    "maintenance_doc"
+]
+
+# Customer document types
+CustomerDocType = Literal[
+    "invoice",
+    "payment_doc",
+    "nda",
+    "contract",
+    "correspondence",
+    "other"
+]
+
+# Combined doc type (for backward compatibility and general use)
+DocType = Literal[
+    "meeting_minutes",
+    "requirements",
+    "email",  # Legacy, can be mapped to correspondence
+    "questionnaire",
+    "questionnaire_response",
+    "proposal",
+    "design_sdd",
+    "kickoff_meeting",
+    "instruction_manual",
+    "maintenance_doc",
+    "invoice",
+    "payment_doc",
+    "nda",
+    "contract",
+    "correspondence",
+    "other"
+]
 
 
 class CustomerCreate(BaseModel):
@@ -28,12 +72,14 @@ class DocumentUpdate(BaseModel):
     doc_type: Optional[DocType] = None
     filename: Optional[str] = Field(None, max_length=255)
     project_id: Optional[str] = None
+    document_category: Optional[DocumentCategory] = None
 
 
 class DocumentOut(BaseModel):
     id: str
     customer_id: str
     project_id: Optional[str] = None
+    document_category: str
     doc_type: str
     filename: str
     storage_path: str
@@ -77,6 +123,62 @@ class ProposalOut(BaseModel):
     questionnaire_id: Optional[str] = None
     content: str
     created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Project Resource Schemas
+class ResourceBase(BaseModel):
+    resource_name: str = Field(min_length=1, max_length=200)
+    company_name: str = Field(min_length=1, max_length=200)
+    total_hours: int = Field(gt=0)
+
+
+class ResourceCreate(ResourceBase):
+    pass
+
+
+class ResourceUpdate(BaseModel):
+    resource_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    company_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    total_hours: Optional[int] = Field(None, gt=0)
+    available_hours: Optional[int] = Field(None, ge=0)
+
+
+class ResourceOut(BaseModel):
+    id: str
+    resource_name: str
+    company_name: str
+    total_hours: int
+    available_hours: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectResourceCreate(BaseModel):
+    project_id: str
+    resource_id: str
+    allocated_hours: int = Field(gt=0)
+
+
+class ProjectResourceUpdate(BaseModel):
+    resource_id: Optional[str] = None
+    allocated_hours: Optional[int] = Field(None, gt=0)
+
+
+class ProjectResourceOut(BaseModel):
+    id: str
+    project_id: str
+    resource_id: str
+    allocated_hours: int
+    hours_committed: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    resource: Optional[ResourceOut] = None
 
     class Config:
         from_attributes = True

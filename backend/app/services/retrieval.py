@@ -21,7 +21,10 @@ def retrieve_customer_context(customer_id: str, top_k: int = 12) -> list[dict]:
         vector=qvec,
         top_k=top_k,
         include_metadata=True,
-        filter={"customer_id": {"$eq": customer_id}},
+        filter={
+            "customer_id": {"$eq": customer_id},
+            "document_category": {"$eq": "project"}  # Only retrieve project documents
+        },
     )
 
     if namespace:

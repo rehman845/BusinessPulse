@@ -22,7 +22,8 @@ export const customersService = {
   async getCustomers() {
     const response = await apiClient.get<Customer[]>("/customers");
     // Our backend returns data directly, not wrapped
-    return Array.isArray(response.data) ? response.data : response.data?.data || response.data;
+    const data = response.data as Customer[] | { data: Customer[] } | Customer[];
+    return Array.isArray(data) ? data : (data as { data: Customer[] }).data || [];
   },
 
   /**

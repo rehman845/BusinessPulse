@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
 from io import BytesIO
@@ -19,17 +19,42 @@ router = APIRouter()
 @router.post("/{customer_id}/proposal/generate", response_model=schemas.ProposalOut)
 def generate_proposal_route(
     customer_id: str,
+    project_id: str | None = Query(None, description="Project ID to associate proposal with"),
     db: Session = Depends(get_db),
 ):
     customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    # Proposal is generated purely from all customer documents (including uploaded questionnaire answers)
+    # Check if questionnaire response exists (required before generating proposal)
+    questionnaire_response_query = db.query(models.Document).filter(
+        models.Document.customer_id == customer_id,
+        models.Document.doc_type == "questionnaire_response",
+        models.Document.deleted_at.is_(None)
+    )
+    
+    if project_id:
+        # If project_id is provided, check for questionnaire response for that project
+        questionnaire_response_query = questionnaire_response_query.filter(
+            models.Document.project_id == project_id
+        )
+    
+    questionnaire_response = questionnaire_response_query.first()
+    
+    if not questionnaire_response:
+        error_msg = "Questionnaire response is required before generating a proposal."
+        if project_id:
+            error_msg += f" Please upload a questionnaire response document for this project first."
+        else:
+            error_msg += " Please upload a questionnaire response document for this customer first."
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    # Proposal is generated from all customer documents (including uploaded questionnaire answers)
     proposal_data = generate_proposal(customer)
 
     proposal = models.Proposal(
         customer_id=customer_id,
+        project_id=project_id,
         questionnaire_id=None,
         content=json.dumps(proposal_data),
     )
@@ -53,9 +78,11 @@ def generate_proposal_route(
         with open(pdf_file_path, "wb") as f:
             f.write(pdf_bytes)
         
-        # Create Document record for the proposal PDF
+        # Create Document record for the proposal PDF (as project document)
         proposal_doc = models.Document(
             customer_id=customer_id,
+            project_id=project_id,
+            document_category="project",
             doc_type="proposal",
             filename=pdf_filename,
             storage_path=pdf_file_path,
@@ -104,6 +131,7 @@ def generate_proposal_route(
                     "document_id": proposal_doc.id,
                     "chunk_index": i,
                     "doc_type": "proposal",
+                    "document_category": "project",  # Proposals are always project documents
                     "uploaded_at": proposal_doc.uploaded_at.isoformat(),
                     "text": ch,
                 }

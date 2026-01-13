@@ -15,10 +15,13 @@ export interface Proposal {
 
 export const proposalService = {
   /**
-   * Generate proposal for a customer using all their documents (via SSR API route)
+   * Generate proposal for a customer/project using all their documents (via SSR API route)
    */
-  async generateProposal(customerId: string) {
-    const response = await apiClient.post<Proposal>(`/customers/${customerId}/proposal/generate`);
+  async generateProposal(customerId: string, projectId?: string | null) {
+    const url = projectId
+      ? `/customers/${customerId}/proposal/generate?project_id=${projectId}`
+      : `/customers/${customerId}/proposal/generate`;
+    const response = await apiClient.post<Proposal>(url);
     return response.data;
   },
 

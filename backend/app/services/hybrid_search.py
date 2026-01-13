@@ -81,14 +81,26 @@ def hybrid_search(
     query_vector = embed_text(query)
     namespace = (settings.PINECONE_NAMESPACE or "").strip()
     
+    # Always filter for project documents
+    base_filter = {"document_category": {"$eq": "project"}}
+    
+    # Merge with provided filter_dict if any
+    if filter_dict:
+        # Combine filters (both must match)
+        if "$and" in filter_dict:
+            filter_dict["$and"].append(base_filter)
+        else:
+            filter_dict = {"$and": [filter_dict, base_filter]}
+        final_filter = filter_dict
+    else:
+        final_filter = base_filter
+    
     query_kwargs = dict(
         vector=query_vector,
         top_k=top_k * 2,  # Get more results for re-ranking
         include_metadata=True,
+        filter=final_filter,
     )
-    
-    if filter_dict:
-        query_kwargs["filter"] = filter_dict
     
     if namespace:
         query_kwargs["namespace"] = namespace

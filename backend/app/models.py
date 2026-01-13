@@ -34,7 +34,8 @@ class Document(Base):
     customer_id: Mapped[str] = mapped_column(String, ForeignKey("customers.id"), nullable=False)
     project_id: Mapped[str | None] = mapped_column(String, nullable=True)  # Optional project association
 
-    doc_type: Mapped[str] = mapped_column(String(50), nullable=False)  # meeting_minutes, requirements, email, questionnaire
+    document_category: Mapped[str] = mapped_column(String(20), nullable=False, default="project")  # "project" or "customer"
+    doc_type: Mapped[str] = mapped_column(String(50), nullable=False)  # meeting_minutes, requirements, email, questionnaire, etc.
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
     
@@ -107,6 +108,7 @@ class Questionnaire(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     customer_id: Mapped[str] = mapped_column(String, ForeignKey("customers.id"), nullable=False)
+    project_id: Mapped[str | None] = mapped_column(String, nullable=True)  # Optional project association
 
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="Requirements Clarification Questionnaire")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft")  # draft/sent/completed
@@ -144,6 +146,7 @@ class Proposal(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     customer_id: Mapped[str] = mapped_column(String, ForeignKey("customers.id"), nullable=False)
+    project_id: Mapped[str | None] = mapped_column(String, nullable=True)  # Optional project association
     questionnaire_id: Mapped[str | None] = mapped_column(String, ForeignKey("questionnaires.id"), nullable=True)
 
     content: Mapped[str] = mapped_column(Text, nullable=False)  # store JSON/text blob
@@ -151,6 +154,44 @@ class Proposal(Base):
 
     customer: Mapped["Customer"] = relationship("Customer", back_populates="proposals")
     questionnaire: Mapped["Questionnaire"] = relationship("Questionnaire")
+
+
+class Resource(Base):
+    """Global pool of outsourcing resources"""
+    __tablename__ = "resources"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    resource_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    company_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    total_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    available_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
+
+    assignments: Mapped[list["ProjectResource"]] = relationship(
+        "ProjectResource", back_populates="resource", cascade="all, delete-orphan"
+    )
+
+
+class ProjectResource(Base):
+    """Stores outsourcing resources associated with projects"""
+    __tablename__ = "project_resources"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String, nullable=False)  # Project ID (from frontend localStorage)
+    resource_id: Mapped[str] = mapped_column(String, ForeignKey("resources.id"), nullable=False)
+    allocated_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    hours_committed: Mapped[bool] = mapped_column(default=False)  # True when hours are deducted (project in execution)
+
+    # Legacy snapshot fields (kept nullable for backward compatibility)
+    resource_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    company_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    availability_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
+
+    resource: Mapped["Resource"] = relationship("Resource", back_populates="assignments")
 
 
 # =========================

@@ -29,12 +29,13 @@ export interface QuestionnaireEnvelope {
 
 export const questionnaireService = {
   /**
-   * Generate questionnaire for a customer (via SSR API route)
+   * Generate questionnaire for a customer/project (via SSR API route)
    */
-  async generateQuestionnaire(customerId: string) {
-    const response = await apiClient.post<QuestionnaireEnvelope>(
-      `/customers/${customerId}/questionnaire/generate`
-    );
+  async generateQuestionnaire(customerId: string, projectId?: string | null) {
+    const url = projectId
+      ? `/customers/${customerId}/questionnaire/generate?project_id=${projectId}`
+      : `/customers/${customerId}/questionnaire/generate`;
+    const response = await apiClient.post<QuestionnaireEnvelope>(url);
     return response.data;
   },
 

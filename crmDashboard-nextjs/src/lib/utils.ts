@@ -11,11 +11,24 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function formatDocType(docType: string): string {
   const typeMap: Record<string, string> = {
+    // Project document types
     questionnaire: "Questionnaire",
     questionnaire_response: "Questionnaire Response",
     proposal: "Proposal",
     meeting_minutes: "Meeting Minutes",
     requirements: "Requirements",
+    design_sdd: "Design (SDD)",
+    kickoff_meeting: "Kickoff Meeting",
+    instruction_manual: "Instruction Manual",
+    maintenance_doc: "Maintenance Doc",
+    // Customer document types
+    invoice: "Invoice",
+    payment_doc: "Payment Document",
+    nda: "NDA",
+    contract: "Contract",
+    correspondence: "Correspondence",
+    other: "Other",
+    // Legacy
     email: "Email",
   };
   

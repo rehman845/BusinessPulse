@@ -3,10 +3,10 @@ import { getBackendUrl } from "@/lib/backend-config";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string; questionnaireId: string } }
+  { params }: { params: Promise<{ id: string; questionnaireId: string }> }
 ) {
   try {
-    const { id, questionnaireId } = params;
+    const { id, questionnaireId } = await params;
     const backendUrl = getBackendUrl();
     const response = await fetch(
       `${backendUrl}/customers/${id}/questionnaire/${questionnaireId}/pdf`,

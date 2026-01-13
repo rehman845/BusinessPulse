@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   customersService,
   documentsService,
-  questionnaireService,
   type Customer,
   type Document,
   type DocType,
@@ -30,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Upload, FileText, FileQuestion, FileSignature, FolderOpen, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, Upload, FileText, ArrowUpDown, ArrowUp, ArrowDown, Eye, Download, Trash2, ArrowLeft, FileUp } from "lucide-react";
 import { toast } from "sonner";
 import { formatDocType } from "@/lib/utils";
 import Link from "next/link";
@@ -47,10 +46,8 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
   const [loadingCustomer, setLoadingCustomer] = useState(true);
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [docType, setDocType] = useState<DocType>("meeting_minutes");
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [docType, setDocType] = useState<DocType>("invoice");
   const [file, setFile] = useState<File | null>(null);
-  const [generatingQn, setGeneratingQn] = useState(false);
   const [sortField, setSortField] = useState<"filename" | "type" | "uploaded_at">("uploaded_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
@@ -59,55 +56,28 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
     return allProjectsList.filter((p) => p.customerId === customerId);
   }, [allProjectsList, customerId]);
 
-  // Group documents by project_id
-  const groupedDocuments = useMemo(() => {
-    // Sort function
-    const sortDocuments = (docs: Document[]) => {
-      const sorted = [...docs].sort((a, b) => {
-        let comparison = 0;
-        
-        switch (sortField) {
-          case "filename":
-            comparison = a.filename.localeCompare(b.filename);
-            break;
-          case "type":
-            comparison = formatDocType(a.doc_type).localeCompare(formatDocType(b.doc_type));
-            break;
-          case "uploaded_at":
-            const dateA = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
-            const dateB = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
-            comparison = dateA - dateB;
-            break;
-        }
-        
-        return sortDirection === "asc" ? comparison : -comparison;
-      });
+  // Sort customer documents (no grouping needed since customer docs don't have project_id)
+  const sortedDocuments = useMemo(() => {
+    return [...documents].sort((a, b) => {
+      let comparison = 0;
       
-      return sorted;
-    };
-
-    const grouped: Record<string, { project: Project | null; documents: Document[] }> = {};
-    
-    // Initialize with "General" group (no project)
-    grouped["general"] = { project: null, documents: [] };
-
-    // Group by project_id
-    documents.forEach((doc) => {
-      const key = doc.project_id || "general";
-      if (!grouped[key]) {
-        const project = customerProjects.find((p) => p.id === key);
-        grouped[key] = { project: project || null, documents: [] };
+      switch (sortField) {
+        case "filename":
+          comparison = a.filename.localeCompare(b.filename);
+          break;
+        case "type":
+          comparison = formatDocType(a.doc_type).localeCompare(formatDocType(b.doc_type));
+          break;
+        case "uploaded_at":
+          const dateA = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
+          const dateB = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
       }
-      grouped[key].documents.push(doc);
+      
+      return sortDirection === "asc" ? comparison : -comparison;
     });
-
-    // Sort documents in each group
-    Object.keys(grouped).forEach((key) => {
-      grouped[key].documents = sortDocuments(grouped[key].documents);
-    });
-
-    return grouped;
-  }, [documents, customerProjects, sortField, sortDirection]);
+  }, [documents, sortField, sortDirection]);
 
   useEffect(() => {
     const load = async () => {
@@ -126,7 +96,8 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
   const fetchDocuments = async () => {
     try {
       setLoadingDocs(true);
-      const docs = await documentsService.getCustomerDocuments(customerId);
+      // Load only customer documents (not project documents)
+      const docs = await documentsService.getCustomerDocuments(customerId, null, "customer");
       setDocuments(docs);
     } catch (error: any) {
       toast.error("Failed to load documents", { description: error.message || "Please try again" });
@@ -153,10 +124,10 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
     }
     try {
       setUploading(true);
-      await documentsService.uploadDocument(customerId, docType, file, selectedProjectId || undefined);
+      // Customer documents don't need project_id
+      await documentsService.uploadDocument(customerId, docType, "customer", file);
       toast.success("Document uploaded");
       setFile(null);
-      setSelectedProjectId(null);
       const input = document.getElementById("customer-doc-file") as HTMLInputElement | null;
       if (input) input.value = "";
       await fetchDocuments();
@@ -164,19 +135,6 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
       toast.error("Failed to upload document", { description: error.message || "Please try again" });
     } finally {
       setUploading(false);
-    }
-  };
-
-  const handleGenerateQuestionnaire = async () => {
-    try {
-      setGeneratingQn(true);
-      const result = await questionnaireService.generateQuestionnaire(customerId);
-      await questionnaireService.downloadQuestionnairePDF(customerId, result.questionnaire_id);
-      toast.success("Questionnaire generated and downloaded");
-    } catch (error: any) {
-      toast.error("Failed to generate questionnaire", { description: error.message || "Please try again" });
-    } finally {
-      setGeneratingQn(false);
     }
   };
 
@@ -213,14 +171,21 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{customer.name}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Customer workspace – upload documents, generate questionnaires, and create proposals.
-          </p>
+        <div className="flex items-center gap-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary text-2xl font-bold">
+            {customer.name.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">{customer.name}</h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Customer workspace – upload and manage customer-related documents
+            </p>
+          </div>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/customers")}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Customers
         </Button>
       </div>
@@ -228,65 +193,59 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: document upload & list */}
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Upload Documents</CardTitle>
+          <Card className="border-2 border-dashed">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2">
+                <FileUp className="h-5 w-5" />
+                Upload Customer Documents
+              </CardTitle>
               <CardDescription>
-                Upload meeting minutes, emails, and requirements related to this customer.
+                Upload invoices, payment documents, NDAs, contracts, and other customer-related documents.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleUpload} className="space-y-4">
                 <div className="space-y-3">
-                  <div className="flex gap-3">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Document Type</label>
                     <Select value={docType} onValueChange={(v) => setDocType(v as DocType)}>
-                      <SelectTrigger className="w-[220px]">
+                      <SelectTrigger className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="meeting_minutes">Meeting Minutes</SelectItem>
-                        <SelectItem value="requirements">Requirements</SelectItem>
-                        <SelectItem value="email">Email</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={selectedProjectId || "none"}
-                      onValueChange={(v) => setSelectedProjectId(v === "none" ? null : v)}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Select Project (Optional)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">General (No Project)</SelectItem>
-                        {customerProjects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.projectName}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="invoice">Invoice</SelectItem>
+                        <SelectItem value="payment_doc">Payment Document</SelectItem>
+                        <SelectItem value="nda">NDA</SelectItem>
+                        <SelectItem value="contract">Contract</SelectItem>
+                        <SelectItem value="correspondence">Correspondence</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex gap-3">
-                    <Input
-                      id="customer-doc-file"
-                      type="file"
-                      onChange={handleFileChange}
-                      className="flex-1"
-                      disabled={uploading}
-                    />
-                    <Button type="submit" disabled={uploading || !file}>
-                      {uploading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="mr-2 h-4 w-4" />
-                          Upload
-                        </>
-                      )}
-                    </Button>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Select File</label>
+                    <div className="flex gap-3">
+                      <Input
+                        id="customer-doc-file"
+                        type="file"
+                        onChange={handleFileChange}
+                        className="flex-1"
+                        disabled={uploading}
+                      />
+                      <Button type="submit" disabled={uploading || !file} className="shrink-0">
+                        {uploading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Upload
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </form>
@@ -295,8 +254,13 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Documents</CardTitle>
-              <CardDescription>All documents uploaded for this customer, grouped by project</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Customer Documents
+              </CardTitle>
+              <CardDescription>
+                All customer-related documents (invoices, payments, NDAs, contracts, etc.)
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {loadingDocs ? (
@@ -304,175 +268,164 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               ) : documents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <FileText className="h-10 w-10 text-muted-foreground mb-3" />
-                  <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="rounded-full bg-muted p-6 mb-4">
+                    <FileText className="h-12 w-12 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">No documents uploaded yet</h3>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    Upload invoices, payment documents, NDAs, contracts, or other customer-related documents to get started.
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-6">
-                  {Object.entries(groupedDocuments).map(([key, { project, documents: projectDocs }]) => {
-                    if (projectDocs.length === 0) return null;
-                    
-                    return (
-                      <div key={key} className="space-y-2">
-                        <div className="flex items-center gap-2 pb-2 border-b">
-                          <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                          <h3 className="font-semibold text-sm">
-                            {project ? (
-                              <Link
-                                href={`/dashboard/projects/${project.id}`}
-                                className="text-primary hover:underline"
-                              >
-                                {project.projectName}
-                              </Link>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[40%]">
+                          <button
+                            onClick={() => handleSort("filename")}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Filename
+                            {sortField === "filename" ? (
+                              sortDirection === "asc" ? (
+                                <ArrowUp className="h-3 w-3" />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" />
+                              )
                             ) : (
-                              "General Documents"
+                              <ArrowUpDown className="h-3 w-3 opacity-50" />
                             )}
-                          </h3>
-                          <span className="text-xs text-muted-foreground">
-                            ({projectDocs.length} {projectDocs.length === 1 ? "document" : "documents"})
-                          </span>
-                        </div>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>
-                                <button
-                                  onClick={() => handleSort("filename")}
-                                  className="flex items-center gap-1 hover:text-foreground"
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-[25%]">
+                          <button
+                            onClick={() => handleSort("type")}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Type
+                            {sortField === "type" ? (
+                              sortDirection === "asc" ? (
+                                <ArrowUp className="h-3 w-3" />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-50" />
+                            )}
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-[25%]">
+                          <button
+                            onClick={() => handleSort("uploaded_at")}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Uploaded At
+                            {sortField === "uploaded_at" ? (
+                              sortDirection === "asc" ? (
+                                <ArrowUp className="h-3 w-3" />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-50" />
+                            )}
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-[10%] text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedDocuments.map((doc) => (
+                        <TableRow key={doc.id} className="hover:bg-muted/50 transition-colors">
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-muted-foreground" />
+                              <span className="truncate">{doc.filename}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                              {formatDocType(doc.doc_type)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {doc.uploaded_at
+                              ? new Date(doc.uploaded_at).toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              {(doc.filename.endsWith(".pdf") ||
+                                doc.filename.endsWith(".docx") ||
+                                doc.filename.endsWith(".doc")) && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    documentsService.viewDocument(customerId, doc.id).catch((err) => {
+                                      toast.error("Failed to view document", { description: err.message });
+                                    });
+                                  }}
+                                  title="View document"
                                 >
-                                  Filename
-                                  {sortField === "filename" ? (
-                                    sortDirection === "asc" ? (
-                                      <ArrowUp className="h-3 w-3" />
-                                    ) : (
-                                      <ArrowDown className="h-3 w-3" />
-                                    )
-                                  ) : (
-                                    <ArrowUpDown className="h-3 w-3 opacity-50" />
-                                  )}
-                                </button>
-                              </TableHead>
-                              <TableHead>
-                                <button
-                                  onClick={() => handleSort("type")}
-                                  className="flex items-center gap-1 hover:text-foreground"
-                                >
-                                  Type
-                                  {sortField === "type" ? (
-                                    sortDirection === "asc" ? (
-                                      <ArrowUp className="h-3 w-3" />
-                                    ) : (
-                                      <ArrowDown className="h-3 w-3" />
-                                    )
-                                  ) : (
-                                    <ArrowUpDown className="h-3 w-3 opacity-50" />
-                                  )}
-                                </button>
-                              </TableHead>
-                              <TableHead>
-                                <button
-                                  onClick={() => handleSort("uploaded_at")}
-                                  className="flex items-center gap-1 hover:text-foreground"
-                                >
-                                  Uploaded At
-                                  {sortField === "uploaded_at" ? (
-                                    sortDirection === "asc" ? (
-                                      <ArrowUp className="h-3 w-3" />
-                                    ) : (
-                                      <ArrowDown className="h-3 w-3" />
-                                    )
-                                  ) : (
-                                    <ArrowUpDown className="h-3 w-3 opacity-50" />
-                                  )}
-                                </button>
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {projectDocs.map((doc) => (
-                              <TableRow 
-                                key={doc.id}
-                                className="cursor-pointer hover:bg-muted/50"
-                                onClick={() => handleDocumentClick(doc.id)}
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  documentsService.downloadDocument(customerId, doc.id).catch((err) => {
+                                    toast.error("Failed to download document", { description: err.message });
+                                  });
+                                }}
+                                title="Download document"
                               >
-                                <TableCell className="font-medium text-primary hover:underline">
-                                  {doc.filename}
-                                </TableCell>
-                                <TableCell>
-                                  {formatDocType(doc.doc_type)}
-                                </TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                  {doc.uploaded_at
-                                    ? new Date(doc.uploaded_at).toLocaleString()
-                                    : "N/A"}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    );
-                  })}
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`Are you sure you want to delete "${doc.filename}"?`)) {
+                                    documentsService.deleteDocument(customerId, doc.id).then(() => {
+                                      toast.success("Document deleted");
+                                      fetchDocuments();
+                                    }).catch((err) => {
+                                      toast.error("Failed to delete document", { description: err.message });
+                                    });
+                                  }
+                                }}
+                                title="Delete document"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right: actions for questionnaire & proposal */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Questionnaire</CardTitle>
-              <CardDescription>
-                Generate an engineering-focused clarification questionnaire using the uploaded documents and a fixed
-                prompt.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button onClick={handleGenerateQuestionnaire} disabled={generatingQn}>
-                {generatingQn ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <FileQuestion className="mr-2 h-4 w-4" />
-                    Generate Questionnaire
-                  </>
-                )}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                The questionnaire is generated using all current documents for this customer. You can download or view it
-                from the Questionnaire area later.
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Proposal</CardTitle>
-              <CardDescription>
-                After the customer fills the questionnaire, upload their response as a document and generate a proposal.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button
-                variant="outline"
-                onClick={() => router.push(`/dashboard/customers/${customerId}/proposal`)}
-              >
-                <FileSignature className="mr-2 h-4 w-4" />
-                Go to Proposal Generator
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                The proposal will use all documents for this customer: requirements, emails, meeting minutes,
-                questionnaires, and questionnaire responses, combined with a fixed proposal prompt.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );
