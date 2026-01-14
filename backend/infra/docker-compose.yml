@@ -22,5 +22,17 @@ services:
     depends_on:
       - postgres
 
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: businesspulse-backend
+    env_file:
+      - ../.env
+    ports:
+      - "8001:8000"
+    depends_on:
+      - postgres
+
 volumes:
   context_pgdata:

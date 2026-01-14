@@ -12,7 +12,9 @@ export interface Document {
   document_category: "project" | "customer";
   doc_type: string;
   filename: string;
-  storage_path: string;
+  storage_path?: string | null;
+  storage_provider?: string;
+  storage_key?: string | null;
   uploaded_at?: string;
 }
 
@@ -114,10 +116,43 @@ export const documentsService = {
   },
 
   /**
-   * Download a document (forces download - via SSR API route)
+   * Get download URL for a document (for R2, returns signed URL)
    */
-  async downloadDocument(customerId: string, documentId: string): Promise<void> {
-    // Use Next.js API route (SSR) - backend URL is never exposed
+  async getDownloadUrl(documentId: string): Promise<string> {
+    const response = await fetch(`/api/documents/${documentId}/download-url`, {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw {
+        message: errorData.error || errorData.detail || `HTTP ${response.status}: ${response.statusText}`,
+        status: response.status,
+      };
+    }
+
+    const data = await response.json();
+    return data.download_url;
+  },
+
+  /**
+   * Download a document (forces download - uses signed URLs for R2)
+   */
+  async downloadDocument(customerId: string, documentId: string, doc?: Document): Promise<void> {
+    // If document is stored in R2, use signed URL
+    if (doc?.storage_provider === "r2" && doc?.storage_key) {
+      try {
+        const signedUrl = await this.getDownloadUrl(documentId);
+        // Open signed URL directly
+        window.open(signedUrl, "_blank");
+        return;
+      } catch (error: any) {
+        // Fallback to regular download if signed URL fails
+        console.warn("Failed to get signed URL, falling back to regular download:", error);
+      }
+    }
+
+    // Fallback to regular download endpoint
     const response = await fetch(`/api/customers/${customerId}/documents/${documentId}/download`, {
       method: "GET",
     });
@@ -132,15 +167,11 @@ export const documentsService = {
 
     // Get filename from Content-Disposition header or use document ID
     const contentDisposition = response.headers.get("Content-Disposition");
-    let filename = `document_${documentId}`;
+    let filename = doc?.filename || `document_${documentId}`;
     if (contentDisposition) {
-      // Try to extract filename from Content-Disposition header
-      // Handles both quoted and unquoted filenames: filename="file.pdf" or filename=file.pdf
       const quotedMatch = contentDisposition.match(/filename\*?=['"]?([^'";]+)['"]?/i);
       if (quotedMatch && quotedMatch[1]) {
-        filename = quotedMatch[1].trim();
-        // Remove quotes if present
-        filename = filename.replace(/^["']|["']$/g, '');
+        filename = quotedMatch[1].trim().replace(/^["']|["']$/g, '');
       }
     }
 

@@ -18,6 +18,7 @@ import {
   Receipt,
   MessageSquare,
   UserCog,
+  CheckSquare,
   type LucideIcon,
 } from "lucide-react";
 
@@ -65,6 +66,11 @@ export const mainNavigation: NavItem[] = [
     title: "Projects",
     url: "/dashboard/projects",
     icon: Briefcase,
+  },
+  {
+    title: "Tasks",
+    url: "/dashboard/tasks",
+    icon: CheckSquare,
   },
   {
     title: "Invoices",

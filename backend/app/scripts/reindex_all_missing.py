@@ -122,18 +122,39 @@ def reindex_all_missing():
             
             # Update document text
             doc_text = db.query(models.DocumentText).filter(models.DocumentText.document_id == doc_id).first()
+            
+            # Generate summary for meeting minutes if needed
+            summary = None
+            if doc_type == "meeting_minutes" and len(extracted.strip()) > 200:
+                try:
+                    from ..services.meeting_summary import generate_meeting_summary
+                    summary = generate_meeting_summary(extracted)
+                    print(f"  Generated summary for meeting minutes: {len(summary)} chars")
+                except Exception as e:
+                    print(f"  Warning: Failed to generate meeting summary: {e}")
+                    summary = None
+            
             if doc_text:
                 doc_text.extracted_text = extracted
+                if summary:
+                    doc_text.summary = summary
             else:
-                doc_text = models.DocumentText(document_id=doc_id, extracted_text=extracted)
+                doc_text = models.DocumentText(
+                    document_id=doc_id,
+                    extracted_text=extracted,
+                    summary=summary
+                )
                 db.add(doc_text)
             
             document.page_count = page_count
             document.processing_status = "processing"
             db.commit()
             
+            # For meeting minutes, use summary instead of full text for RAG indexing
+            text_to_index = summary if (doc_type == "meeting_minutes" and summary) else extracted
+            
             # Chunk and index
-            chunks = chunk_text(extracted, chunk_size=900, overlap=150)
+            chunks = chunk_text(text_to_index, chunk_size=900, overlap=150)
             
             for i, ch in enumerate(chunks):
                 vector = embed_text(ch)

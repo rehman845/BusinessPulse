@@ -12,6 +12,7 @@ export * from "./questionnaire.service";
 export * from "./proposal.service";
 export * from "./chatbot.service";
 export * from "./resources.service";
+export { tasksService } from "./tasks.service";
 
 // Add more services as needed:
 // export * from "./products.service";

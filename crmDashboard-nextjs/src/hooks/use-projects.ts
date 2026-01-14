@@ -231,7 +231,17 @@ export function useProjects({ initialProjects }: UseProjectsProps = {}) {
     });
   };
 
-  const deleteProject = (projectId: string) => {
+  const deleteProject = async (projectId: string) => {
+    // Delete all tasks for this project from backend (cascade delete)
+    try {
+      const { tasksService } = await import("@/api");
+      await tasksService.deleteAllProjectTasks(projectId);
+    } catch (error) {
+      // Log but don't fail - tasks might not exist or backend might be unavailable
+      console.warn("Failed to delete project tasks:", error);
+    }
+
+    // Delete project from local storage
     setProjectsList((prev) => {
       const updated = prev.filter((p) => p.id !== projectId);
       saveProjectsToStorage(updated);

@@ -140,7 +140,8 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
 
   const handleDocumentClick = async (documentId: string) => {
     try {
-      await documentsService.downloadDocument(customerId, documentId);
+      const doc = documents.find(d => d.id === documentId);
+      await documentsService.downloadDocument(customerId, documentId, doc);
     } catch (error: any) {
       toast.error("Failed to open document", {
         description: error.message || "Please try again",
@@ -387,7 +388,7 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
                                 className="h-8 w-8"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  documentsService.downloadDocument(customerId, doc.id).catch((err) => {
+                                  documentsService.downloadDocument(customerId, doc.id, doc).catch((err) => {
                                     toast.error("Failed to download document", { description: err.message });
                                   });
                                 }}

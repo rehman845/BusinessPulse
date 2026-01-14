@@ -37,7 +37,11 @@ class Document(Base):
     document_category: Mapped[str] = mapped_column(String(20), nullable=False, default="project")  # "project" or "customer"
     doc_type: Mapped[str] = mapped_column(String(50), nullable=False)  # meeting_minutes, requirements, email, questionnaire, etc.
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=True)  # Legacy local path (nullable for R2)
+    
+    # R2 Storage fields
+    storage_provider: Mapped[str] = mapped_column(String(20), nullable=False, default="r2")  # "r2" or "local"
+    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)  # R2 object key (e.g., "customers/123/projects/456/customer-docs/invoice/doc_id_filename.pdf")
     
     # New metadata fields
     file_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # File size in bytes
@@ -60,6 +64,7 @@ class DocumentText(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     document_id: Mapped[str] = mapped_column(String, ForeignKey("documents.id"), nullable=False, unique=True)
     extracted_text: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)  # Summary for meeting minutes (RAG optimization)
 
     document: Mapped["Document"] = relationship("Document", back_populates="text")
 
@@ -192,6 +197,27 @@ class ProjectResource(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
 
     resource: Mapped["Resource"] = relationship("Resource", back_populates="assignments")
+
+
+class Task(Base):
+    """Stores tasks synced with Notion"""
+    __tablename__ = "tasks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String, nullable=False)  # Project ID (from frontend localStorage)
+    
+    # Task fields
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="Todo")  # Todo, In Progress, Done, Blocked
+    due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    
+    # Notion integration
+    notion_page_id: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True)  # Notion page ID for sync
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # Last sync with Notion
 
 
 # =========================

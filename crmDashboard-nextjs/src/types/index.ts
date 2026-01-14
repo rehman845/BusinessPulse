@@ -7,4 +7,5 @@ export * from "./common";
 export * from "./order";
 export * from "./project";
 export * from "./invoice";
+export * from "./task";
 

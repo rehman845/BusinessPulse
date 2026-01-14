@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FolderOpen, PlayCircle, Pause, CheckCircle } from "lucide-react";
+import { Plus, FolderOpen, PlayCircle, Pause, CheckCircle, CheckSquare } from "lucide-react";
 import { useProjects } from "@/hooks";
 import { ProjectsFilters } from "@/components/projects/projects-filters";
 import { ProjectsTable } from "@/components/projects/projects-table";
@@ -11,6 +11,7 @@ import { NewProjectDialog } from "@/components/projects/new-project-dialog";
 import { ProjectDetailsDialog } from "@/components/projects/project-details-dialog";
 import { Project } from "@/types";
 import { toast } from "sonner";
+import { tasksService } from "@/api";
 import { useRouter } from "next/navigation";
 
 export function ProjectsPage() {
@@ -19,6 +20,7 @@ export function ProjectsPage() {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [viewingProject, setViewingProject] = useState<Project | null>(null);
+  const [taskCounts, setTaskCounts] = useState<Record<string, { total: number; pending: number }>>({});
   
   const {
     projects,
@@ -34,6 +36,22 @@ export function ProjectsPage() {
     updateProject,
     deleteProject,
   } = useProjects();
+
+  useEffect(() => {
+    const loadTaskCounts = async () => {
+      try {
+        const counts = await tasksService.getTaskCountsByProject();
+        setTaskCounts(counts);
+      } catch (error) {
+        // Silently fail - tasks might not be set up yet
+        console.error("Failed to load task counts:", error);
+      }
+    };
+    loadTaskCounts();
+    // Refresh every 30 seconds
+    const interval = setInterval(loadTaskCounts, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleProjectCreated = (project: Project) => {
     if (editingProject) {
@@ -72,8 +90,17 @@ export function ProjectsPage() {
     toast.success(`Project "${project.projectName}" marked as completed`);
   };
 
-  const handleCancelProject = (project: Project) => {
-    if (typeof window !== "undefined" && window.confirm(`Are you sure you want to cancel project "${project.projectName}"?`)) {
+  const handleCancelProject = async (project: Project) => {
+    if (typeof window !== "undefined" && window.confirm(`Are you sure you want to cancel project "${project.projectName}"? All tasks for this project will be deleted.`)) {
+      // Delete all tasks for this project (cascade delete)
+      try {
+        const { tasksService } = await import("@/api");
+        await tasksService.deleteAllProjectTasks(project.id);
+      } catch (error) {
+        console.warn("Failed to delete project tasks:", error);
+        // Continue with cancellation even if task deletion fails
+      }
+      
       updateProject(project.id, { status: "cancelled" });
       toast.success(`Project "${project.projectName}" cancelled`);
     }
@@ -111,6 +138,10 @@ export function ProjectsPage() {
     toast.success(`Project data downloaded as ${project.projectNumber}.json`);
   };
 
+  // Calculate total pending tasks across all projects
+  const totalPendingTasks = Object.values(taskCounts).reduce((sum, counts) => sum + (counts.pending || 0), 0);
+  const totalTasks = Object.values(taskCounts).reduce((sum, counts) => sum + (counts.total || 0), 0);
+
   const stats = [
     {
       title: "Total Projects",
@@ -135,6 +166,12 @@ export function ProjectsPage() {
       value: allProjects.filter((p) => p.status === "completed").length,
       icon: CheckCircle,
       color: "text-blue-500",
+    },
+    {
+      title: "Pending Tasks",
+      value: totalPendingTasks,
+      icon: CheckSquare,
+      color: totalPendingTasks > 0 ? "text-orange-500" : "text-muted-foreground",
     },
   ];
 

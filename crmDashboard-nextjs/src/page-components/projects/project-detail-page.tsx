@@ -6,7 +6,7 @@ import { Project } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Edit, Download, Trash, PlayCircle, PauseCircle, CheckCircle, Ban, FileText, Loader2, Upload, Eye, FileQuestion, FileSignature, Users, Plus } from "lucide-react";
+import { ArrowLeft, Edit, Download, Trash, PlayCircle, PauseCircle, CheckCircle, Ban, FileText, Loader2, Upload, Eye, FileQuestion, FileSignature, Users, Plus, CheckSquare } from "lucide-react";
 import { format } from "date-fns";
 import { statusColors } from "@/components/projects/projects-table-columns";
 import { NewProjectDialog } from "@/components/projects/new-project-dialog";
@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { formatDocType } from "@/lib/utils";
+import { ProjectTasksSection } from "@/components/projects/project-tasks-section";
 
 interface ProjectDetailPageProps {
   projectId: string;
@@ -69,7 +70,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   const [file, setFile] = useState<File | null>(null);
   const [generatingQn, setGeneratingQn] = useState(false);
   const [generatingProposal, setGeneratingProposal] = useState(false);
-  const [viewMode, setViewMode] = useState<"details" | "documents" | "resources">("details");
+  const [viewMode, setViewMode] = useState<"details" | "documents" | "resources" | "tasks">("details");
   const [projectResources, setProjectResources] = useState<ProjectResourceAssignment[]>([]);
   const [loadingProjectResources, setLoadingProjectResources] = useState(false);
   const [availableResources, setAvailableResources] = useState<Resource[]>([]);
@@ -248,14 +249,23 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     setEditDialogOpen(true);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!project) return;
     if (
       typeof window !== "undefined" &&
       window.confirm(
-        `Are you sure you want to delete project "${project.projectName}"? This action cannot be undone.`
+        `Are you sure you want to delete project "${project.projectName}"? This action cannot be undone. All tasks for this project will also be deleted.`
       )
     ) {
+      // Delete all tasks for this project first (cascade delete)
+      try {
+        const { tasksService } = await import("@/api");
+        await tasksService.deleteAllProjectTasks(projectId);
+      } catch (error) {
+        console.warn("Failed to delete project tasks:", error);
+        // Continue with deletion even if task deletion fails
+      }
+      
       deleteProject(projectId);
       toast.success(`Project "${project.projectName}" deleted`);
       router.push("/dashboard/projects");
@@ -265,6 +275,17 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   const handleStatusChange = async (newStatus: Project["status"]) => {
     if (!project) return;
     const oldStatus = project.status;
+    
+    // If project is being cancelled or deleted, delete all tasks first
+    if (newStatus === "cancelled") {
+      try {
+        const { tasksService } = await import("@/api");
+        await tasksService.deleteAllProjectTasks(projectId);
+      } catch (error) {
+        console.warn("Failed to delete project tasks:", error);
+        // Continue with status change even if task deletion fails
+      }
+    }
     
     // Update project status
     updateProject(projectId, { status: newStatus });
@@ -556,6 +577,10 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
                 <Users className="mr-2 h-4 w-4" />
                 View Resources
               </Button>
+              <Button variant="outline" onClick={() => setViewMode("tasks")}>
+                <CheckSquare className="mr-2 h-4 w-4" />
+                View Tasks
+              </Button>
             </>
           )}
           {viewMode === "documents" && (
@@ -565,6 +590,12 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
             </Button>
           )}
           {viewMode === "resources" && (
+            <Button variant="outline" onClick={handleViewProjectDetails}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Project Details
+            </Button>
+          )}
+          {viewMode === "tasks" && (
             <Button variant="outline" onClick={handleViewProjectDetails}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Project Details
@@ -850,7 +881,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
                           size="icon"
                           onClick={() => {
                             if (project?.customerId) {
-                              documentsService.downloadDocument(project.customerId, doc.id).catch((err) => {
+                              documentsService.downloadDocument(project.customerId, doc.id, doc).catch((err) => {
                                 toast.error("Failed to download document", { description: err.message });
                               });
                             }
@@ -1162,6 +1193,8 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
             </Card>
           </div>
         </div>
+      ) : viewMode === "tasks" ? (
+        <ProjectTasksSection projectId={projectId} />
       ) : null}
 
       {/* Edit Dialog */}

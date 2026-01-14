@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
@@ -10,6 +10,8 @@ from .. import models, schemas
 from ..services.ingest import ingest_document
 from ..settings import settings
 from ..services.pinecone_client import index as pinecone_index
+from ..services.r2_storage import get_r2_storage
+from ..services.meeting_summary import generate_meeting_summary
 
 router = APIRouter()
 
@@ -21,15 +23,20 @@ def upload_document(
     document_category: schemas.DocumentCategory = Form(...),
     file: UploadFile = File(...),
     project_id: str | None = Form(None),
+    scope: str | None = Form(None, description="Scope: 'customer-docs' or 'project-docs' (auto-derived from document_category if not provided)"),
     db: Session = Depends(get_db),
 ):
     customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    # Validate: project docs must have project_id, customer docs should not require it
+    # Validate: project docs must have project_id
     if document_category == "project" and not project_id:
         raise HTTPException(status_code=400, detail="Project documents must have a project_id")
+    
+    # Validate scope if provided
+    if scope and scope not in ["customer-docs", "project-docs"]:
+        raise HTTPException(status_code=400, detail="scope must be 'customer-docs' or 'project-docs'")
     
     try:
         doc = ingest_document(
@@ -73,7 +80,7 @@ def list_customer_documents(
 
 
 def _get_document_file(customer_id: str, document_id: str, request: Request, db: Session, access_type: str = "download"):
-    """Helper function to get document file with proper path resolution"""
+    """Helper function to get document file - returns document and file info"""
     customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -106,46 +113,6 @@ def _get_document_file(customer_id: str, document_id: str, request: Request, db:
         db.rollback()
         pass
     
-    # Check if file exists (convert relative path to absolute if needed)
-    file_path = document.storage_path
-    
-    # Try multiple possible locations
-    possible_paths = []
-    
-    if os.path.isabs(file_path):
-        # If absolute path, try as-is
-        possible_paths.append(file_path)
-    else:
-        # storage_path is stored as "app/storage/uploads/{customer_id}/{filename}"
-        # Docker WORKDIR is /app, so files are at /app/app/storage/uploads/{customer_id}/{filename}
-        
-        # Try /app/app/storage/uploads/... first (if UPLOAD_DIR = "app/storage/uploads")
-        if file_path.startswith("app/"):
-            possible_paths.append(os.path.join("/app", file_path))
-            # Also try without the leading "app/"
-            possible_paths.append(os.path.join("/app", file_path[4:]))  # Remove "app/"
-        else:
-            # Try /app/{path}
-            possible_paths.append(os.path.join("/app", file_path))
-            # Also try /app/app/storage/uploads/{path} if it looks like a storage path
-            if "storage" in file_path or "uploads" in file_path:
-                possible_paths.append(os.path.join("/app", "app", file_path))
-    
-    # Find the first path that exists
-    file_path = None
-    for path in possible_paths:
-        if os.path.exists(path):
-            file_path = path
-            break
-    
-    if not file_path or not os.path.exists(file_path):
-        # Return helpful error with all attempted paths
-        attempted = ", ".join(possible_paths[:3])  # Show first 3 attempts
-        raise HTTPException(
-            status_code=404, 
-            detail=f"File not found on server. Attempted paths: {attempted}. Original storage_path: {document.storage_path}"
-        )
-    
     # Determine media type based on file extension
     ext = os.path.splitext(document.filename)[1].lower()
     media_types = {
@@ -156,9 +123,9 @@ def _get_document_file(customer_id: str, document_id: str, request: Request, db:
         '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         '.xls': 'application/vnd.ms-excel',
     }
-    media_type = media_types.get(ext, 'application/octet-stream')
+    media_type = media_types.get(ext, document.mime_type or 'application/octet-stream')
     
-    return document, file_path, media_type
+    return document, media_type
 
 
 @router.get("/{customer_id}/documents/{document_id}/view")
@@ -169,9 +136,31 @@ def view_document(
     db: Session = Depends(get_db),
 ):
     """View the document inline in browser (for PDFs and DOCX)"""
-    document, file_path, media_type = _get_document_file(customer_id, document_id, request, db, access_type="view")
+    document, media_type = _get_document_file(customer_id, document_id, request, db, access_type="view")
     
-    # Use inline disposition for viewing in browser
+    # If R2 storage, redirect to signed URL
+    if document.storage_provider == "r2" and document.storage_key:
+        try:
+            r2 = get_r2_storage()
+            if r2._is_configured():
+                signed_url = r2.generate_presigned_get_url(document.storage_key)
+                return RedirectResponse(url=signed_url)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {str(e)}")
+    
+    # Fallback to local file
+    file_path = document.storage_path
+    if not file_path or not os.path.exists(file_path):
+        # Try to resolve path
+        if not os.path.isabs(file_path):
+            if file_path.startswith("app/"):
+                file_path = os.path.join("/app", file_path)
+            else:
+                file_path = os.path.join("/app", file_path)
+    
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {document.storage_path}")
+    
     headers = {
         "Content-Disposition": f'inline; filename="{document.filename}"'
     }
@@ -191,9 +180,31 @@ def download_document(
     db: Session = Depends(get_db),
 ):
     """Download the original uploaded document file"""
-    document, file_path, media_type = _get_document_file(customer_id, document_id, request, db, access_type="download")
+    document, media_type = _get_document_file(customer_id, document_id, request, db, access_type="download")
     
-    # Use attachment disposition for downloading
+    # If R2 storage, redirect to signed URL
+    if document.storage_provider == "r2" and document.storage_key:
+        try:
+            r2 = get_r2_storage()
+            if r2._is_configured():
+                signed_url = r2.generate_presigned_get_url(document.storage_key)
+                return RedirectResponse(url=signed_url)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {str(e)}")
+    
+    # Fallback to local file
+    file_path = document.storage_path
+    if not file_path or not os.path.exists(file_path):
+        # Try to resolve path
+        if not os.path.isabs(file_path):
+            if file_path.startswith("app/"):
+                file_path = os.path.join("/app", file_path)
+            else:
+                file_path = os.path.join("/app", file_path)
+    
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {document.storage_path}")
+    
     headers = {
         "Content-Disposition": f'attachment; filename="{document.filename}"'
     }
@@ -355,10 +366,31 @@ def reindex_document(
     
     # Update document text
     doc_text = db.query(models.DocumentText).filter(models.DocumentText.document_id == document_id).first()
+    
+    # Generate summary for meeting minutes if needed
+    summary = None
+    if document.doc_type == "meeting_minutes" and len(extracted.strip()) > 200:
+        try:
+            summary = generate_meeting_summary(extracted)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Generated summary for meeting minutes document {document_id}")
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to generate meeting summary: {e}")
+            summary = None
+    
     if doc_text:
         doc_text.extracted_text = extracted
+        if summary:
+            doc_text.summary = summary
     else:
-        doc_text = models.DocumentText(document_id=document_id, extracted_text=extracted)
+        doc_text = models.DocumentText(
+            document_id=document_id,
+            extracted_text=extracted,
+            summary=summary
+        )
         db.add(doc_text)
     
     document.page_count = page_count
@@ -367,8 +399,11 @@ def reindex_document(
     
     # Only index project documents in Pinecone (skip customer documents)
     if document.document_category == "project":
+        # For meeting minutes, use summary instead of full text for RAG indexing
+        text_to_index = summary if (document.doc_type == "meeting_minutes" and summary) else extracted
+        
         # Chunk and index
-        chunks = chunk_text(extracted, chunk_size=900, overlap=150)
+        chunks = chunk_text(text_to_index, chunk_size=900, overlap=150)
         
         for i, ch in enumerate(chunks):
             vector = embed_text(ch)
@@ -416,13 +451,44 @@ def reindex_document(
     return {"reindexed": True, "document_id": document_id, "chunks_created": len(chunks)}
 
 
+@router.get("/documents/{document_id}/download-url")
+def get_document_download_url(
+    document_id: str,
+    db: Session = Depends(get_db),
+):
+    """Get a presigned download URL for a document (R2 only)"""
+    document = (
+        db.query(models.Document)
+        .filter(
+            models.Document.id == document_id,
+            models.Document.deleted_at.is_(None)
+        )
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if document.storage_provider != "r2" or not document.storage_key:
+        raise HTTPException(status_code=400, detail="Document is not stored in R2")
+    
+    try:
+        r2 = get_r2_storage()
+        if not r2._is_configured():
+            raise HTTPException(status_code=500, detail="R2 storage is not configured")
+        
+        signed_url = r2.generate_presigned_get_url(document.storage_key)
+        return {"download_url": signed_url, "expires_in_seconds": r2.signed_url_expires}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {str(e)}")
+
+
 @router.delete("/{customer_id}/documents/{document_id}")
 def delete_document(
     customer_id: str,
     document_id: str,
     db: Session = Depends(get_db),
 ):
-    """Soft delete a document (marks as deleted, removes from Pinecone, but keeps file and DB record)"""
+    """Soft delete a document (marks as deleted, removes from Pinecone and R2, but keeps DB record)"""
     customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -438,6 +504,18 @@ def delete_document(
     )
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Delete from R2 if stored there
+    if document.storage_provider == "r2" and document.storage_key:
+        try:
+            r2 = get_r2_storage()
+            if r2._is_configured():
+                r2.delete_key(document.storage_key)
+        except Exception as e:
+            # Log but continue
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to delete from R2: {e}")
     
     # Get all chunks for this document
     chunks = db.query(models.Chunk).filter(models.Chunk.document_id == document_id).all()
@@ -458,3 +536,94 @@ def delete_document(
     db.commit()
     
     return {"deleted": True, "document_id": document_id}
+
+
+@router.delete("/{customer_id}/projects/{project_id}/documents")
+def bulk_delete_documents(
+    customer_id: str,
+    project_id: str,
+    scope: str | None = Query(None, description="Scope: 'customer-docs' or 'project-docs'"),
+    doc_type: str | None = Query(None, description="Document type folder name"),
+    db: Session = Depends(get_db),
+):
+    """Bulk delete documents by prefix (deletes from R2 and marks DB as deleted)"""
+    customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    # Build prefix for R2 deletion
+    from ..services.storage_utils import DOC_TYPE_TO_FOLDER
+    
+    if scope:
+        if scope not in ["customer-docs", "project-docs"]:
+            raise HTTPException(status_code=400, detail="scope must be 'customer-docs' or 'project-docs'")
+    else:
+        # Default to project-docs if not specified
+        scope = "project-docs"
+    
+    prefix_parts = [f"customers/{customer_id}/projects/{project_id}/{scope}"]
+    
+    if doc_type:
+        folder_name = DOC_TYPE_TO_FOLDER.get(doc_type, doc_type.replace("_", "-"))
+        prefix_parts.append(folder_name)
+    
+    prefix = "/".join(prefix_parts) + "/"
+    
+    # Delete from R2
+    deleted_from_r2 = 0
+    try:
+        r2 = get_r2_storage()
+        if r2._is_configured():
+            deleted_from_r2 = r2.delete_by_prefix(prefix)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to bulk delete from R2: {e}")
+    
+    # Mark documents as deleted in DB
+    query = db.query(models.Document).filter(
+        models.Document.customer_id == customer_id,
+        models.Document.project_id == project_id,
+        models.Document.deleted_at.is_(None)
+    )
+    
+    # Filter by scope (document_category)
+    if scope == "customer-docs":
+        query = query.filter(models.Document.document_category == "customer")
+    else:
+        query = query.filter(models.Document.document_category == "project")
+    
+    # Filter by doc_type if provided
+    if doc_type:
+        query = query.filter(models.Document.doc_type == doc_type)
+    
+    documents = query.all()
+    deleted_count = len(documents)
+    
+    # Soft delete all matching documents
+    for doc in documents:
+        doc.deleted_at = datetime.utcnow()
+    
+    # Also delete chunks and vectors
+    document_ids = [doc.id for doc in documents]
+    if document_ids:
+        chunks = db.query(models.Chunk).filter(models.Chunk.document_id.in_(document_ids)).all()
+        vector_ids = [chunk.pinecone_vector_id for chunk in chunks if chunk.pinecone_vector_id]
+        
+        if vector_ids:
+            namespace = (settings.PINECONE_NAMESPACE or "").strip()
+            try:
+                pinecone_index.delete(ids=vector_ids, namespace=namespace if namespace else None)
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to delete vectors: {e}")
+    
+    db.commit()
+    
+    return {
+        "deleted": True,
+        "documents_deleted": deleted_count,
+        "r2_objects_deleted": deleted_from_r2,
+        "prefix": prefix
+    }

@@ -82,7 +82,9 @@ class DocumentOut(BaseModel):
     document_category: str
     doc_type: str
     filename: str
-    storage_path: str
+    storage_path: Optional[str] = None  # Legacy, nullable for R2
+    storage_provider: str = "r2"
+    storage_key: Optional[str] = None  # R2 object key
     file_size: Optional[int] = None
     mime_type: Optional[str] = None
     page_count: Optional[int] = None
@@ -179,6 +181,40 @@ class ProjectResourceOut(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     resource: Optional[ResourceOut] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Task Schemas
+class TaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    description: Optional[str] = None
+    status: str = Field(default="Todo")  # Todo, In Progress, Done, Blocked
+    due_date: Optional[datetime] = None
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=500)
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+
+class TaskStatusUpdate(BaseModel):
+    status: str = Field(..., pattern="^(Todo|In Progress|Done|Blocked)$")
+
+
+class TaskOut(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    description: Optional[str] = None
+    status: str
+    due_date: Optional[datetime] = None
+    notion_page_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    last_synced_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
