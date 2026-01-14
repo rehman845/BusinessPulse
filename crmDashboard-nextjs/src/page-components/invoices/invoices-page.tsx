@@ -30,16 +30,19 @@ export function InvoicesPage() {
     deleteInvoice,
   } = useInvoices();
 
-  const handleInvoiceCreated = (invoice: Invoice) => {
-    if (editingInvoice) {
-      updateInvoice(editingInvoice.id, invoice);
-      setEditingInvoice(null);
-      toast.success(`Invoice "${invoice.invoiceNumber}" updated successfully`);
-    } else {
-      addInvoice(invoice);
-      toast.success(`Invoice "${invoice.invoiceNumber}" created successfully`);
+  const handleInvoiceCreated = async (invoice: Invoice) => {
+    try {
+      if (editingInvoice) {
+        await updateInvoice(editingInvoice.id, invoice);
+        setEditingInvoice(null);
+      } else {
+        await addInvoice(invoice);
+      }
+      // Don't close dialog here - let the dialog handle it after the async operation completes
+    } catch (error) {
+      // Error toast is handled in the hook
+      throw error; // Re-throw so dialog can handle it
     }
-    setDialogOpen(false);
   };
 
   const handleEditInvoice = (invoice: Invoice) => {
@@ -47,29 +50,39 @@ export function InvoicesPage() {
     setDialogOpen(true);
   };
 
-  const handleDeleteInvoice = (invoice: Invoice) => {
+  const handleDeleteInvoice = async (invoice: Invoice) => {
     if (
       typeof window !== "undefined" &&
       window.confirm(
-        `Are you sure you want to delete invoice "${invoice.invoiceNumber}"? This action cannot be undone.`
+        `Are you sure you want to delete invoice "${invoice.invoiceNumber || invoice.invoice_number}"? This action cannot be undone.`
       )
     ) {
-      deleteInvoice(invoice.id);
-      toast.success(`Invoice "${invoice.invoiceNumber}" deleted`);
+      try {
+        await deleteInvoice(invoice.id);
+      } catch (error) {
+        // Error toast is handled in the hook
+      }
     }
   };
 
-  const handleMarkAsPaid = (invoice: Invoice) => {
-    updateInvoice(invoice.id, {
-      status: "paid",
-      paidDate: new Date().toISOString(),
-    });
-    toast.success(`Invoice "${invoice.invoiceNumber}" marked as paid`);
+  const handleMarkAsPaid = async (invoice: Invoice) => {
+    try {
+      await updateInvoice(invoice.id, {
+        status: "paid",
+        paidDate: new Date().toISOString(),
+        paid_date: new Date().toISOString(),
+      });
+    } catch (error) {
+      // Error toast is handled in the hook
+    }
   };
 
-  const handleSendInvoice = (invoice: Invoice) => {
-    updateInvoice(invoice.id, { status: "sent" });
-    toast.success(`Invoice "${invoice.invoiceNumber}" sent`);
+  const handleSendInvoice = async (invoice: Invoice) => {
+    try {
+      await updateInvoice(invoice.id, { status: "sent" });
+    } catch (error) {
+      // Error toast is handled in the hook
+    }
   };
 
   const stats = [
@@ -105,7 +118,7 @@ export function InvoicesPage() {
 
   const totalAmount = allInvoices
     .filter((i) => i.status === "paid")
-    .reduce((sum, i) => sum + i.totalAmount, 0);
+    .reduce((sum, i) => sum + (i.totalAmount || i.total || 0), 0);
 
   return (
     <div className="flex flex-col gap-6">

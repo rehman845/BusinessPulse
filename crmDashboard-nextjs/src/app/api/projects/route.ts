@@ -1,0 +1,73 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getBackendUrl } from "@/lib/backend-config";
+
+export async function GET(request: NextRequest) {
+  try {
+    const backendUrl = getBackendUrl();
+    const response = await fetch(`${backendUrl}/projects/`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: response.statusText }));
+      return NextResponse.json(
+        { error: error.detail || `HTTP ${response.status}` },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || "Failed to fetch projects" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const backendUrl = getBackendUrl();
+    const response = await fetch(`${backendUrl}/projects/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+      // Format validation errors for better UX
+      let errorMessage = errorData.detail || `HTTP ${response.status}`;
+      if (Array.isArray(errorData.detail)) {
+        // FastAPI validation errors format
+        const validationErrors = errorData.detail.map((err: any) => {
+          const field = err.loc?.[err.loc.length - 1] || 'field';
+          const fieldName = field.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+          return `${fieldName}: ${err.msg}`;
+        }).join(', ');
+        errorMessage = `Validation errors: ${validationErrors}`;
+      } else if (typeof errorData.detail === 'string') {
+        errorMessage = errorData.detail;
+      }
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || "Failed to create project" },
+      { status: 500 }
+    );
+  }
+}

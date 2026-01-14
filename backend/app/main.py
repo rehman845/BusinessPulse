@@ -9,6 +9,10 @@ from .routes.proposal import router as proposal_router
 from .routes.chatbot import router as chatbot_router
 from .routes.resources import router as resources_router
 from .routes.tasks import router as tasks_router
+from .routes.team import router as team_router
+from .routes.billing import router as billing_router
+from .routes.invoices import router as invoices_router
+from .routes.projects import router as projects_router
 from fastapi.middleware.cors import CORSMiddleware   #newline
 
 
@@ -30,6 +34,10 @@ app.include_router(proposal_router, prefix="/customers", tags=["proposal"])
 app.include_router(chatbot_router, prefix="", tags=["chatbot"])
 app.include_router(resources_router, prefix="", tags=["resources"])
 app.include_router(tasks_router, prefix="", tags=["tasks"])
+app.include_router(team_router, prefix="", tags=["team"])
+app.include_router(billing_router, prefix="", tags=["billing"])
+app.include_router(invoices_router, prefix="", tags=["invoices"])
+app.include_router(projects_router, prefix="/projects", tags=["projects"])
 
 # Admin endpoints
 admin_router = APIRouter()

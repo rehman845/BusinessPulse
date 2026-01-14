@@ -29,7 +29,7 @@ import { Plus, Trash } from "lucide-react";
 interface NewInvoiceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onInvoiceCreated: (invoice: Invoice) => void;
+  onInvoiceCreated: (invoice: Invoice) => void | Promise<void>;
   invoice?: Invoice | null; // If provided, this is an edit dialog
 }
 
@@ -63,20 +63,28 @@ export function NewInvoiceDialog({
     if (open) {
       loadCustomers();
       if (invoice) {
-        // Populate form for editing
+        // Populate form for editing - handle both camelCase and snake_case formats
+        const issueDateStr = invoice.issueDate || invoice.issue_date || "";
+        const dueDateStr = invoice.dueDate || invoice.due_date || "";
         setFormData({
-          customerId: invoice.customerId || "",
-          customerName: invoice.customerName,
-          customerEmail: invoice.customerEmail,
-          projectId: invoice.projectId || "",
-          projectName: invoice.projectName || "",
-          issueDate: invoice.issueDate.split("T")[0],
-          dueDate: invoice.dueDate.split("T")[0],
+          customerId: invoice.customerId || invoice.customer_id || "",
+          customerName: invoice.customerName || invoice.customer_name || "",
+          customerEmail: invoice.customerEmail || invoice.customer_email || "",
+          projectId: invoice.projectId || invoice.project_id || "",
+          projectName: invoice.projectName || invoice.project_name || "",
+          issueDate: issueDateStr ? issueDateStr.split("T")[0] : new Date().toISOString().split("T")[0],
+          dueDate: dueDateStr ? dueDateStr.split("T")[0] : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
           status: invoice.status,
           description: invoice.description || "",
           notes: invoice.notes || "",
         });
-        setItems(invoice.items || []);
+        setItems(invoice.items || invoice.line_items?.map(item => ({
+          id: item.id,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: (item as any).unit_price || (item as any).unitPrice || 0,
+          total: item.total,
+        })) || []);
       } else {
         // Reset form for new invoice
         setFormData({
@@ -123,7 +131,7 @@ export function NewInvoiceDialog({
         ...formData,
         customerId: customer.id,
         customerName: customer.name,
-        customerEmail: customer.email || "",
+        // Customer email is not stored in Customer model, user must enter manually
       });
     }
   };
@@ -193,15 +201,41 @@ export function NewInvoiceDialog({
 
       // Generate invoice number
       const invoiceNumber = invoice
-        ? invoice.invoiceNumber
+        ? (invoice.invoiceNumber || invoice.invoice_number)
         : `INV-${new Date().getFullYear()}-${String(
             Math.floor(Math.random() * 10000)
           ).padStart(4, "0")}`;
 
       const { amount, tax, totalAmount } = calculateTotals();
+      const issueDateISO = new Date(formData.issueDate).toISOString();
+      const dueDateISO = new Date(formData.dueDate).toISOString();
 
       const invoiceData: Invoice = {
         id: invoice?.id || `inv-${Date.now()}`,
+        // Backend format (snake_case) - required
+        invoice_number: invoiceNumber,
+        customer_id: formData.customerId || undefined,
+        customer_name: formData.customerName,
+        customer_email: formData.customerEmail,
+        project_id: formData.projectId || undefined,
+        project_name: formData.projectName || undefined,
+        subtotal: amount,
+        tax,
+        total: totalAmount,
+        status: formData.status,
+        issue_date: issueDateISO,
+        due_date: dueDateISO,
+        paid_date: invoice?.paidDate || invoice?.paid_date,
+        notes: formData.notes || undefined,
+        line_items: items.map((item) => ({
+          id: item.id,
+          category: (item as any).category || "other",
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          total: item.quantity * item.unitPrice,
+        })),
+        // Legacy frontend format (camelCase) - optional but included for compatibility
         invoiceNumber,
         customerId: formData.customerId || undefined,
         customerName: formData.customerName,
@@ -209,21 +243,18 @@ export function NewInvoiceDialog({
         projectId: formData.projectId || undefined,
         projectName: formData.projectName || undefined,
         amount,
-        tax,
         totalAmount,
-        status: formData.status,
-        issueDate: new Date(formData.issueDate).toISOString(),
-        dueDate: new Date(formData.dueDate).toISOString(),
-        paidDate: invoice?.paidDate,
+        issueDate: issueDateISO,
+        dueDate: dueDateISO,
+        paidDate: invoice?.paidDate || invoice?.paid_date,
         description: formData.description || undefined,
         items: items.map((item) => ({
           ...item,
           total: item.quantity * item.unitPrice,
         })),
-        notes: formData.notes || undefined,
       };
 
-      onInvoiceCreated(invoiceData);
+      await onInvoiceCreated(invoiceData);
       onOpenChange(false);
     } catch (error: any) {
       toast.error(

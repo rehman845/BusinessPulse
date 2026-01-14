@@ -13,6 +13,9 @@ export * from "./proposal.service";
 export * from "./chatbot.service";
 export * from "./resources.service";
 export { tasksService } from "./tasks.service";
+export { teamService } from "./team.service";
+export { billingService } from "./billing.service";
+export { invoicesService } from "./invoices.service";
 
 // Add more services as needed:
 // export * from "./products.service";

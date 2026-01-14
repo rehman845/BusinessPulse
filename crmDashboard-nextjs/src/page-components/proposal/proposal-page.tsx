@@ -81,7 +81,7 @@ export function ProposalPage() {
     }
     try {
       setUploadingResponse(true);
-      await documentsService.uploadDocument(selectedCustomerId, "questionnaire_response" as DocType, responseFile);
+      await documentsService.uploadDocument(selectedCustomerId, "questionnaire_response" as DocType, "project", responseFile);
       toast.success("Questionnaire response uploaded");
       setResponseFile(null);
       const input = document.getElementById("proposal-response-file") as HTMLInputElement | null;

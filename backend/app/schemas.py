@@ -68,6 +68,57 @@ class CustomerOut(BaseModel):
         from_attributes = True
 
 
+ProjectStatus = Literal["planning", "execution", "on_hold", "completed", "cancelled"]
+
+
+class ProjectCreate(BaseModel):
+    project_number: str = Field(min_length=1, max_length=50)
+    project_name: str = Field(min_length=1, max_length=200)
+    customer_id: str
+    customer_name: str = Field(default="", max_length=200)
+    email: str = Field(default="", max_length=200)
+    status: ProjectStatus = "planning"
+    start_date: datetime
+    end_date: Optional[datetime] = None
+    budget: Optional[float] = Field(None, ge=0)
+    description: Optional[str] = None
+    assigned_to: Optional[str] = Field(None, max_length=500)
+
+
+class ProjectUpdate(BaseModel):
+    project_number: Optional[str] = Field(None, min_length=1, max_length=50)
+    project_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    customer_id: Optional[str] = None
+    customer_name: Optional[str] = Field(None, max_length=200)
+    email: Optional[str] = Field(None, max_length=200)
+    status: Optional[ProjectStatus] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    budget: Optional[float] = Field(None, ge=0)
+    description: Optional[str] = None
+    assigned_to: Optional[str] = Field(None, max_length=500)
+
+
+class ProjectOut(BaseModel):
+    id: str
+    project_number: str
+    project_name: str
+    customer_id: str
+    customer_name: str
+    email: str
+    status: str
+    start_date: datetime
+    end_date: Optional[datetime] = None
+    budget: Optional[float] = None
+    description: Optional[str] = None
+    assigned_to: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class DocumentUpdate(BaseModel):
     doc_type: Optional[DocType] = None
     filename: Optional[str] = Field(None, max_length=255)
@@ -218,3 +269,204 @@ class TaskOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# =========================
+# Billing / Team / Invoicing
+# =========================
+
+class EmployeeCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=200)
+    role: str = Field(default="Employee", max_length=120)
+    hourly_rate: float = Field(ge=0)
+    hours_per_day: float = Field(default=8.0, ge=0, le=24)
+    days_per_week: float = Field(default=5.0, ge=0, le=7)
+    is_active: bool = True
+
+
+class EmployeeUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    role: Optional[str] = Field(None, max_length=120)
+    hourly_rate: Optional[float] = Field(None, ge=0)
+    hours_per_day: Optional[float] = Field(None, ge=0, le=24)
+    days_per_week: Optional[float] = Field(None, ge=0, le=7)
+    is_active: Optional[bool] = None
+
+
+class EmployeeOut(BaseModel):
+    id: str
+    full_name: str
+    role: str
+    hourly_rate: float
+    hours_per_day: float
+    days_per_week: float
+    is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TimeEntryCreate(BaseModel):
+    employee_id: str
+    project_id: str = Field(min_length=1, max_length=120)
+    work_date: Optional[datetime] = None
+    hours: float = Field(ge=0)
+    description: Optional[str] = None
+
+
+class TimeEntryOut(BaseModel):
+    id: str
+    employee_id: str
+    project_id: str
+    work_date: Optional[datetime] = None
+    hours: float
+    description: Optional[str] = None
+    created_at: Optional[datetime] = None
+    employee: Optional[EmployeeOut] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectEmployeeCreate(BaseModel):
+    project_id: str
+    employee_id: str
+
+
+class ProjectEmployeeOut(BaseModel):
+    id: str
+    project_id: str
+    employee_id: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    employee: Optional[EmployeeOut] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BillingExpenseCreate(BaseModel):
+    expense_type: str = Field(default="subscription", max_length=40)
+    vendor_name: str = Field(default="", max_length=200)
+    description: str = Field(default="")
+    amount: float = Field(ge=0)
+    currency: str = Field(default="USD", max_length=10)
+    frequency: str = Field(default="one_time", max_length=20)  # one_time/monthly/yearly
+    due_date: Optional[datetime] = None
+    paid_date: Optional[datetime] = None
+    project_id: Optional[str] = Field(default=None, max_length=120)
+
+
+class BillingExpenseUpdate(BaseModel):
+    expense_type: Optional[str] = Field(None, max_length=40)
+    vendor_name: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = None
+    amount: Optional[float] = Field(None, ge=0)
+    currency: Optional[str] = Field(None, max_length=10)
+    frequency: Optional[str] = Field(None, max_length=20)
+    due_date: Optional[datetime] = None
+    paid_date: Optional[datetime] = None
+    project_id: Optional[str] = Field(default=None, max_length=120)
+
+
+class BillingExpenseOut(BaseModel):
+    id: str
+    expense_type: str
+    vendor_name: str
+    description: str
+    amount: float
+    currency: str
+    frequency: str
+    due_date: Optional[datetime] = None
+    paid_date: Optional[datetime] = None
+    project_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+InvoiceStatus = Literal["draft", "sent", "paid", "overdue", "cancelled"]
+InvoiceLineCategory = Literal["labor", "subscription", "vendor", "other"]
+
+
+class InvoiceLineItemCreate(BaseModel):
+    category: InvoiceLineCategory = "other"
+    description: str = Field(min_length=1)
+    quantity: float = Field(gt=0)
+    unit_price: float = Field(ge=0)
+
+
+class InvoiceLineItemOut(BaseModel):
+    id: str
+    category: str
+    description: str
+    quantity: float
+    unit_price: float
+    total: float
+
+    class Config:
+        from_attributes = True
+
+
+class InvoiceCreate(BaseModel):
+    invoice_number: str = Field(min_length=1, max_length=50)
+    customer_id: Optional[str] = None
+    customer_name: str = Field(default="", max_length=200)
+    customer_email: str = Field(default="", max_length=200)
+    project_id: Optional[str] = Field(default=None, max_length=120)
+    project_name: Optional[str] = Field(default=None, max_length=200)
+    status: InvoiceStatus = "draft"
+    issue_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
+    notes: Optional[str] = None
+    tax: float = Field(default=0, ge=0)
+    line_items: List[InvoiceLineItemCreate] = Field(default_factory=list)
+
+
+class InvoiceUpdate(BaseModel):
+    status: Optional[InvoiceStatus] = None
+    due_date: Optional[datetime] = None
+    paid_date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class InvoiceOut(BaseModel):
+    id: str
+    invoice_number: str
+    customer_id: Optional[str] = None
+    customer_name: str
+    customer_email: str
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
+    status: str
+    issue_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
+    paid_date: Optional[datetime] = None
+    subtotal: float
+    tax: float
+    total: float
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    line_items: List[InvoiceLineItemOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class InvoiceGenerateRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=120)
+    customer_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    project_name: Optional[str] = None
+    from_date: Optional[datetime] = None
+    to_date: Optional[datetime] = None
+    tax_rate: float = Field(default=0, ge=0)  # e.g. 0.13
+    include_project_expenses: bool = True
+    include_time_entries: bool = True
+    invoice_number: Optional[str] = None

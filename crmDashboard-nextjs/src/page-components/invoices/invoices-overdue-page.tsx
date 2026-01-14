@@ -35,7 +35,9 @@ export function InvoicesOverduePage() {
     return allInvoices.filter((i) => {
       if (i.status === "overdue") return true;
       if (i.status === "sent" || i.status === "draft") {
-        const dueDate = new Date(i.dueDate);
+        const dueDateStr = i.dueDate || i.due_date;
+        if (!dueDateStr) return false;
+        const dueDate = new Date(dueDateStr);
         return dueDate < now;
       }
       return false;
@@ -49,11 +51,15 @@ export function InvoicesOverduePage() {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter((invoice) => {
+        const invoiceNumber = invoice.invoiceNumber || invoice.invoice_number || "";
+        const customerName = invoice.customerName || invoice.customer_name || "";
+        const customerEmail = invoice.customerEmail || invoice.customer_email || "";
+        const projectName = invoice.projectName || invoice.project_name || "";
         const searchableFields = [
-          invoice.invoiceNumber,
-          invoice.customerName,
-          invoice.customerEmail,
-          invoice.projectName || "",
+          invoiceNumber,
+          customerName,
+          customerEmail,
+          projectName,
         ].map((field) => field.toLowerCase());
         return searchableFields.some((field) => field.includes(searchLower));
       });
@@ -62,7 +68,9 @@ export function InvoicesOverduePage() {
     // Apply date range filter
     if (filters.dateRange?.from || filters.dateRange?.to) {
       filtered = filtered.filter((invoice) => {
-        const invoiceDate = new Date(invoice.issueDate);
+        const issueDateStr = invoice.issueDate || invoice.issue_date;
+        if (!issueDateStr) return false;
+        const invoiceDate = new Date(issueDateStr);
         if (filters.dateRange.from && invoiceDate < filters.dateRange.from) {
           return false;
         }
@@ -84,8 +92,29 @@ export function InvoicesOverduePage() {
       sorted = sorted.sort((a, b) => {
         for (const sort of sorting) {
           const key = sort.id as keyof Invoice;
-          const aVal = a[key];
-          const bVal = b[key];
+          // Handle both camelCase and snake_case
+          let aVal: any = a[key];
+          let bVal: any = b[key];
+          
+          // For camelCase keys, also check snake_case
+          if (aVal === undefined && key === "issueDate") {
+            aVal = a.issue_date;
+          }
+          if (bVal === undefined && key === "issueDate") {
+            bVal = b.issue_date;
+          }
+          if (aVal === undefined && key === "totalAmount") {
+            aVal = a.total;
+          }
+          if (bVal === undefined && key === "totalAmount") {
+            bVal = b.total;
+          }
+          
+          // Handle undefined values
+          if (aVal == null && bVal == null) return 0;
+          if (aVal == null) return sort.desc ? -1 : 1;
+          if (bVal == null) return sort.desc ? 1 : -1;
+          
           if (aVal < bVal) return sort.desc ? 1 : -1;
           if (aVal > bVal) return sort.desc ? -1 : 1;
         }
@@ -98,16 +127,18 @@ export function InvoicesOverduePage() {
     return sorted.slice(startIdx, endIdx);
   }, [filteredOverdueInvoices, sorting, pagination]);
 
-  const handleInvoiceCreated = (invoice: Invoice) => {
-    if (editingInvoice) {
-      updateInvoice(editingInvoice.id, invoice);
-      setEditingInvoice(null);
-      toast.success(`Invoice "${invoice.invoiceNumber}" updated successfully`);
-    } else {
-      addInvoice(invoice);
-      toast.success(`Invoice "${invoice.invoiceNumber}" created successfully`);
+  const handleInvoiceCreated = async (invoice: Invoice) => {
+    try {
+      if (editingInvoice) {
+        await updateInvoice(editingInvoice.id, invoice);
+        setEditingInvoice(null);
+      } else {
+        await addInvoice(invoice);
+      }
+      setDialogOpen(false);
+    } catch (error) {
+      // Error toast is handled in the hook
     }
-    setDialogOpen(false);
   };
 
   const handleEditInvoice = (invoice: Invoice) => {
@@ -115,27 +146,34 @@ export function InvoicesOverduePage() {
     setDialogOpen(true);
   };
 
-  const handleDeleteInvoice = (invoice: Invoice) => {
+  const handleDeleteInvoice = async (invoice: Invoice) => {
     if (
       typeof window !== "undefined" &&
       window.confirm(
-        `Are you sure you want to delete invoice "${invoice.invoiceNumber}"? This action cannot be undone.`
+        `Are you sure you want to delete invoice "${invoice.invoiceNumber || invoice.invoice_number}"? This action cannot be undone.`
       )
     ) {
-      deleteInvoice(invoice.id);
-      toast.success(`Invoice "${invoice.invoiceNumber}" deleted`);
+      try {
+        await deleteInvoice(invoice.id);
+      } catch (error) {
+        // Error toast is handled in the hook
+      }
     }
   };
 
-  const handleMarkAsPaid = (invoice: Invoice) => {
-    updateInvoice(invoice.id, {
-      status: "paid",
-      paidDate: new Date().toISOString(),
-    });
-    toast.success(`Invoice "${invoice.invoiceNumber}" marked as paid`);
+  const handleMarkAsPaid = async (invoice: Invoice) => {
+    try {
+      await updateInvoice(invoice.id, {
+        status: "paid",
+        paidDate: new Date().toISOString(),
+        paid_date: new Date().toISOString(),
+      });
+    } catch (error) {
+      // Error toast is handled in the hook
+    }
   };
 
-  const totalOverdueAmount = overdueInvoices.reduce((sum, i) => sum + i.totalAmount, 0);
+  const totalOverdueAmount = overdueInvoices.reduce((sum, i) => sum + (i.totalAmount || i.total || 0), 0);
 
   return (
     <div className="flex flex-col gap-6">

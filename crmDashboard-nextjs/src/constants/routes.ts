@@ -13,11 +13,13 @@ export const ROUTES = {
       EXPIRED: "/dashboard/agreements/expired",
     },
     PROJECTS: "/dashboard/projects",
+    TEAM: "/dashboard/team",
     INVOICES: {
       ROOT: "/dashboard/invoices",
       PAID: "/dashboard/invoices/paid",
       OVERDUE: "/dashboard/invoices/overdue",
     },
+    BILLING: "/dashboard/billing",
     PRODUCTS: "/dashboard/products",
     REPORTS: "/dashboard/reports",
     DOCUMENTS: "/dashboard/documents",

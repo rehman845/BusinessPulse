@@ -21,7 +21,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { customersService, type Customer } from "@/api";
+import { Checkbox } from "@/components/ui/checkbox";
+import { customersService, teamService, projectsService, type Customer } from "@/api";
+import type { Employee } from "@/types";
 import { toast } from "sonner";
 
 interface NewProjectDialogProps {
@@ -40,6 +42,9 @@ export function NewProjectDialog({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     projectName: "",
@@ -57,6 +62,7 @@ export function NewProjectDialog({
   useEffect(() => {
     if (open) {
       loadCustomers();
+      loadEmployees();
       if (project) {
         // Populate form for editing
         setFormData({
@@ -71,6 +77,11 @@ export function NewProjectDialog({
           assignedTo: project.assignedTo || "",
           status: project.status,
         });
+
+        // Load existing employee assignments for this project so they appear selected
+        if (project.id) {
+          loadProjectEmployees(project.id);
+        }
       } else {
         // Reset form for new project
         setFormData({
@@ -85,6 +96,7 @@ export function NewProjectDialog({
           assignedTo: "",
           status: "planning",
         });
+        setSelectedEmployeeIds([]);
       }
     }
   }, [open, project]);
@@ -98,6 +110,30 @@ export function NewProjectDialog({
       toast.error("Failed to load customers");
     } finally {
       setLoadingCustomers(false);
+    }
+  };
+
+  const loadEmployees = async () => {
+    setLoadingEmployees(true);
+    try {
+      const data = await teamService.getEmployees(true); // only active employees
+      setEmployees(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to load employees", error);
+      toast.error("Failed to load employees");
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
+
+  const loadProjectEmployees = async (projectId: string) => {
+    try {
+      const assignments = await teamService.getProjectEmployees(projectId);
+      const ids = assignments.map((a) => a.employee_id);
+      setSelectedEmployeeIds(ids);
+    } catch (error) {
+      console.error("Failed to load project employees", error);
+      // Don't block dialog on this
     }
   };
 
@@ -125,24 +161,98 @@ export function NewProjectDialog({
             Math.floor(Math.random() * 10000)
           ).padStart(3, "0")}`;
 
-      const projectData: Project = {
-        id: project?.id || `proj-${Date.now()}`,
-        projectNumber,
-        projectName: formData.projectName,
-        customerId: formData.customerId,
-        customerName: formData.customerName,
-        email: formData.email || `${formData.customerName.toLowerCase().replace(/\s+/g, ".")}@example.com`,
-        status: formData.status,
-        startDate: new Date(formData.startDate).toISOString(),
-        endDate: formData.endDate
-          ? new Date(formData.endDate).toISOString()
-          : undefined,
-        budget: formData.budget ? parseFloat(formData.budget) : undefined,
-        description: formData.description || undefined,
-        assignedTo: formData.assignedTo || undefined,
-      };
+      // Derive a friendly "Assigned To" string from selected employees
+      const assignedNames =
+        employees
+          .filter((emp) => selectedEmployeeIds.includes(emp.id))
+          .map((emp) => emp.full_name)
+          .join(", ") || formData.assignedTo || undefined;
+
+      let projectData: Project;
+
+      if (project) {
+        // Update existing project
+        projectData = await projectsService.updateProject(project.id, {
+          projectNumber,
+          projectName: formData.projectName,
+          customerId: formData.customerId,
+          customerName: formData.customerName,
+          email: formData.email || `${formData.customerName.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+          status: formData.status,
+          startDate: new Date(formData.startDate).toISOString(),
+          endDate: formData.endDate
+            ? new Date(formData.endDate).toISOString()
+            : undefined,
+          budget: formData.budget ? parseFloat(formData.budget) : undefined,
+          description: formData.description || undefined,
+          assignedTo: assignedNames,
+        });
+      } else {
+        // Create new project
+        projectData = await projectsService.createProject({
+          projectNumber,
+          projectName: formData.projectName,
+          customerId: formData.customerId,
+          customerName: formData.customerName,
+          email: formData.email || `${formData.customerName.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+          status: formData.status,
+          startDate: new Date(formData.startDate).toISOString(),
+          endDate: formData.endDate
+            ? new Date(formData.endDate).toISOString()
+            : undefined,
+          budget: formData.budget ? parseFloat(formData.budget) : undefined,
+          description: formData.description || undefined,
+          assignedTo: assignedNames,
+        });
+      }
 
       onProjectCreated(projectData);
+
+      // Sync employee assignments for both new and existing projects
+      try {
+        if (project) {
+          // Editing: Sync assignments (add new, remove unselected)
+          const currentAssignments = await teamService.getProjectEmployees(project.id);
+          const currentEmployeeIds = new Set(currentAssignments.map((a) => a.employee_id));
+          const selectedIds = new Set(selectedEmployeeIds);
+
+          // Remove employees that are no longer selected
+          const toRemove = currentAssignments.filter((a) => !selectedIds.has(a.employee_id));
+          await Promise.all(
+            toRemove.map((assignment) =>
+              teamService.removeEmployeeFromProject(project.id, assignment.id).catch(() => null)
+            )
+          );
+
+          // Add newly selected employees
+          const toAdd = selectedEmployeeIds.filter((id) => !currentEmployeeIds.has(id));
+          await Promise.all(
+            toAdd.map((employeeId) =>
+              teamService.assignEmployeeToProject(project.id, employeeId).catch(() => {
+                // Backend prevents duplicates; ignore conflicts
+                return null;
+              })
+            )
+          );
+        } else {
+          // New project: Create assignments for all selected employees
+          if (selectedEmployeeIds.length > 0) {
+            await Promise.all(
+              selectedEmployeeIds.map((employeeId) =>
+                teamService.assignEmployeeToProject(projectData.id, employeeId).catch(() => {
+                  // Backend prevents duplicates; ignore per-employee errors
+                  return null;
+                })
+              )
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to sync employee assignments", error);
+        // Surface a soft warning but don't block project creation/update
+        toast.warning("Employee assignments could not be fully synced. You can adjust them from the project details page.");
+      }
+
       // Toast will be shown by the parent component
       onOpenChange(false);
     } catch (error: any) {
@@ -292,15 +402,57 @@ export function NewProjectDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="assignedTo">Assigned To</Label>
-              <Input
-                id="assignedTo"
-                value={formData.assignedTo}
-                onChange={(e) =>
-                  setFormData({ ...formData, assignedTo: e.target.value })
-                }
-                placeholder="Team member name"
-              />
+              <Label>Assigned Employees</Label>
+              <p className="text-xs text-muted-foreground">
+                Select one or more employees from your Team to associate with this project.
+                You can always adjust assignments later from the project details page.
+              </p>
+              <div className="rounded-md border max-h-40 overflow-y-auto p-3 space-y-2">
+                {loadingEmployees ? (
+                  <p className="text-xs text-muted-foreground">Loading employees...</p>
+                ) : employees.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No employees found. Add employees from the Team section first.
+                  </p>
+                ) : (
+                  employees.map((employee) => {
+                    const checked = selectedEmployeeIds.includes(employee.id);
+                    return (
+                      <label
+                        key={employee.id}
+                        className="flex items-center gap-2 text-sm cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) => {
+                            const isChecked = value === true;
+                            setSelectedEmployeeIds((prev) =>
+                              isChecked
+                                ? [...prev, employee.id]
+                                : prev.filter((id) => id !== employee.id)
+                            );
+                          }}
+                        />
+                        <span className="flex-1">
+                          <span className="font-medium">{employee.full_name}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {employee.role}
+                          </span>
+                        </span>
+                        <span className="text-xs font-mono text-muted-foreground">
+                          ${employee.hourly_rate.toFixed(2)}/hr
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+              {selectedEmployeeIds.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Selected: {selectedEmployeeIds.length}{" "}
+                  {selectedEmployeeIds.length === 1 ? "employee" : "employees"}
+                </p>
+              )}
             </div>
 
             <div className="grid gap-2">

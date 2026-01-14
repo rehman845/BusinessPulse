@@ -6,7 +6,7 @@ import { Project } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Edit, Download, Trash, PlayCircle, PauseCircle, CheckCircle, Ban, FileText, Loader2, Upload, Eye, FileQuestion, FileSignature, Users, Plus, CheckSquare } from "lucide-react";
+import { ArrowLeft, Edit, Download, Trash, PlayCircle, PauseCircle, CheckCircle, Ban, FileText, Loader2, Upload, Eye, FileQuestion, FileSignature, Users, Plus, CheckSquare, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 import { statusColors } from "@/components/projects/projects-table-columns";
 import { NewProjectDialog } from "@/components/projects/new-project-dialog";
@@ -16,6 +16,8 @@ import {
   questionnaireService,
   proposalService,
   resourcesService,
+  teamService,
+  projectsService,
   type Document,
   type DocType,
   type ProjectDocType,
@@ -25,6 +27,10 @@ import {
   type ProjectResourceAssignment,
   type ProjectResourceAssignmentCreate,
 } from "@/api/services/resources.service";
+import {
+  type ProjectEmployeeAssignment,
+} from "@/api/services/team.service";
+import type { Employee } from "@/types";
 import { toast } from "sonner";
 import {
   Table,
@@ -59,7 +65,7 @@ const statusLabels: Record<Project["status"], string> = {
 
 export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   const router = useRouter();
-  const { allProjectsList, updateProject, deleteProject, refreshFromStorage } = useProjects();
+  const { updateProject, deleteProject } = useProjects();
   const [project, setProject] = useState<Project | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -81,6 +87,12 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     resource_id: "",
     allocated_hours: 0,
   });
+  const [projectEmployees, setProjectEmployees] = useState<ProjectEmployeeAssignment[]>([]);
+  const [loadingProjectEmployees, setLoadingProjectEmployees] = useState(false);
+  const [availableEmployees, setAvailableEmployees] = useState<Employee[]>([]);
+  const [loadingEmployeePool, setLoadingEmployeePool] = useState(false);
+  const [assigningEmployee, setAssigningEmployee] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
 
   useEffect(() => {
     setAssignmentForm((prev) => ({ ...prev, project_id: projectId }));
@@ -124,71 +136,32 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   };
 
   useEffect(() => {
-    // Function to load project from localStorage directly
-    const loadProjectFromStorage = (): Project | null => {
-      if (typeof window === "undefined") return null;
-      
+    const loadProject = async () => {
       try {
-        const stored = localStorage.getItem("crm_projects");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const storedProjects = Array.isArray(parsed) ? parsed : [];
-          return storedProjects.find((p: Project) => p.id === projectId) || null;
-        }
-      } catch (e) {
-        console.error("Failed to load projects from storage", e);
-      }
-      return null;
-    };
-
-    const findAndLoadProject = () => {
-      // Try localStorage first (most reliable)
-      let foundProject = loadProjectFromStorage();
-      
-      // Fallback to hook state
-      if (!foundProject) {
-        foundProject = allProjectsList.find((p) => p.id === projectId) || null;
-      }
-
-      if (foundProject) {
-        setProject(foundProject);
-        setLoading(false);
-        // Load documents and resources for this project
-        if (foundProject.customerId) {
-          loadProjectDocuments(foundProject.customerId);
+        setLoading(true);
+        // Load project directly from API
+        const loadedProject = await projectsService.getProject(projectId);
+        setProject(loadedProject);
+        // Load documents, resources, and employees for this project
+        if (loadedProject.customerId) {
+          loadProjectDocuments(loadedProject.customerId);
         }
         loadProjectResources();
-        return true;
+        // Also load employees so they're ready when user clicks "View Resources"
+        loadProjectEmployees();
+        loadAvailableEmployees();
+      } catch (error: any) {
+        console.error("Failed to load project:", error);
+        toast.error("Project not found. Redirecting to projects list...");
+        setTimeout(() => {
+          router.push("/dashboard/projects");
+        }, 2000);
+      } finally {
+        setLoading(false);
       }
-      return false;
     };
 
-    // Refresh hook state from storage first
-    refreshFromStorage();
-
-    // Try to load immediately
-    if (findAndLoadProject()) {
-      return;
-    }
-
-    // If not found, wait a moment for state to sync and try again
-    const timer1 = setTimeout(() => {
-      if (findAndLoadProject()) {
-        return;
-      }
-      // One more retry after a bit more time
-      setTimeout(() => {
-        if (!findAndLoadProject()) {
-          setLoading(false);
-          toast.error("Project not found. Redirecting to projects list...");
-          setTimeout(() => {
-            router.push("/dashboard/projects");
-          }, 2000);
-        }
-      }, 400);
-    }, 150);
-
-    return () => clearTimeout(timer1);
+    loadProject();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -240,9 +213,14 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     };
   }, [projectId, project]);
 
-  const handleProjectUpdated = (updatedProject: Project) => {
+  const handleProjectUpdated = async (updatedProject: Project) => {
     setProject(updatedProject);
     updateProject(projectId, updatedProject);
+    // Refresh employee assignments after project update
+    // (in case employees were added/removed during edit)
+    if (viewMode === "resources") {
+      await Promise.all([loadProjectEmployees(), loadAvailableEmployees()]);
+    }
   };
 
   const handleEdit = () => {
@@ -359,6 +337,65 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     setViewMode("resources");
     loadProjectResources();
     loadAvailableResources();
+    loadProjectEmployees();
+    loadAvailableEmployees();
+  };
+
+  const loadProjectEmployees = async () => {
+    try {
+      setLoadingProjectEmployees(true);
+      const employees = await teamService.getProjectEmployees(projectId);
+      setProjectEmployees(employees);
+    } catch (error: any) {
+      toast.error("Failed to load project employees", { description: error.message || "Please try again" });
+    } finally {
+      setLoadingProjectEmployees(false);
+    }
+  };
+
+  const loadAvailableEmployees = async () => {
+    try {
+      setLoadingEmployeePool(true);
+      const employees = await teamService.getEmployees(true); // Only active employees
+      setAvailableEmployees(employees);
+    } catch (error: any) {
+      toast.error("Failed to load available employees", { description: error.message || "Please try again" });
+    } finally {
+      setLoadingEmployeePool(false);
+    }
+  };
+
+  const handleAssignEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmployeeId) {
+      toast.error("Please select an employee");
+      return;
+    }
+
+    try {
+      setAssigningEmployee(true);
+      await teamService.assignEmployeeToProject(projectId, selectedEmployeeId);
+      toast.success("Employee assigned to project");
+      setSelectedEmployeeId("");
+      await Promise.all([loadProjectEmployees(), loadAvailableEmployees()]);
+    } catch (error: any) {
+      toast.error("Failed to assign employee", { description: error.message || "Please try again" });
+    } finally {
+      setAssigningEmployee(false);
+    }
+  };
+
+  const handleDeleteEmployee = async (assignmentId: string) => {
+    if (!window.confirm("Remove this employee from the project?")) {
+      return;
+    }
+    try {
+      await teamService.removeEmployeeFromProject(projectId, assignmentId);
+      toast.success("Employee removed from project");
+      await Promise.all([loadProjectEmployees(), loadAvailableEmployees()]);
+    } catch (error: any) {
+      toast.error("Failed to remove employee", { description: error.message || "Please try again" });
+    }
   };
 
   const handleAssignResource = async (e: React.FormEvent) => {
@@ -1192,6 +1229,178 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
               </CardContent>
             </Card>
           </div>
+
+          {/* Employee Assignments Section */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <UserPlus className="h-5 w-5" />
+                      Employee Pool
+                    </CardTitle>
+                    <CardDescription>
+                      Available company employees to assign to this project
+                    </CardDescription>
+                  </div>
+                  <Button variant="outline" onClick={() => loadAvailableEmployees()}>
+                    Refresh
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {loadingEmployeePool ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : availableEmployees.filter((emp) => !projectEmployees.some((pe) => pe.employee_id === emp.id)).length === 0 ? (
+                  <div className="rounded-md border border-dashed p-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No employees available. Use the Team tab in the sidebar to add employees.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead className="text-right">Hourly Rate</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {availableEmployees
+                          .filter((emp) => !projectEmployees.some((pe) => pe.employee_id === emp.id))
+                          .map((employee) => (
+                            <TableRow key={employee.id}>
+                              <TableCell className="font-medium">{employee.full_name}</TableCell>
+                              <TableCell>{employee.role}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant="outline" className="font-mono">
+                                  ${employee.hourly_rate.toFixed(2)}/hr
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                  <div>
+                    <h4 className="text-sm font-semibold">Assign employee to this project</h4>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Select an employee to assign them to work on this project.
+                    </p>
+                  </div>
+                  <form onSubmit={handleAssignEmployee} className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Employee</label>
+                      <Select
+                        value={selectedEmployeeId}
+                        onValueChange={setSelectedEmployeeId}
+                        disabled={availableEmployees.filter((emp) => !projectEmployees.some((pe) => pe.employee_id === emp.id)).length === 0}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select employee" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableEmployees
+                            .filter((emp) => !projectEmployees.some((pe) => pe.employee_id === emp.id))
+                            .map((emp) => (
+                              <SelectItem key={emp.id} value={emp.id}>
+                                {emp.full_name} • {emp.role} • ${emp.hourly_rate.toFixed(2)}/hr
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        type="submit"
+                        disabled={assigningEmployee || !selectedEmployeeId || availableEmployees.filter((emp) => !projectEmployees.some((pe) => pe.employee_id === emp.id)).length === 0}
+                      >
+                        {assigningEmployee ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Assigning...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Assign to Project
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Employee Assignments</CardTitle>
+                <CardDescription>
+                  Employees currently assigned to this project
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingProjectEmployees ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : projectEmployees.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No employees assigned yet. Use the form to assign available employees.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Employee</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead className="text-right">Hourly Rate</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {projectEmployees.map((assignment) => (
+                          <TableRow key={assignment.id}>
+                            <TableCell className="font-medium">
+                              {assignment.employee?.full_name || "Employee"}
+                            </TableCell>
+                            <TableCell>{assignment.employee?.role || "N/A"}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant="outline" className="font-mono">
+                                ${assignment.employee?.hourly_rate.toFixed(2) || "0.00"}/hr
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteEmployee(assignment.id)}
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              >
+                                <Trash className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       ) : viewMode === "tasks" ? (
         <ProjectTasksSection projectId={projectId} />
@@ -1200,7 +1409,14 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
       {/* Edit Dialog */}
       <NewProjectDialog
         open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          // When dialog closes after edit, refresh employee assignments
+          if (!open && project) {
+            loadProjectEmployees();
+            loadAvailableEmployees();
+          }
+        }}
         onProjectCreated={handleProjectUpdated}
         project={project}
       />

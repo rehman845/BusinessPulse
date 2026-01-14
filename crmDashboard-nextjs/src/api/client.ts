@@ -74,8 +74,29 @@ class ApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        // Try to extract error message from response body
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          } else if (errorData.detail) {
+            // Handle FastAPI validation errors
+            if (Array.isArray(errorData.detail)) {
+              const validationErrors = errorData.detail.map((err: any) => {
+                const field = err.loc?.[err.loc.length - 1] || 'field';
+                return `${field}: ${err.msg}`;
+              }).join(', ');
+              errorMessage = `Validation errors: ${validationErrors}`;
+            } else if (typeof errorData.detail === 'string') {
+              errorMessage = errorData.detail;
+            }
+          }
+        } catch {
+          // If response body is not JSON, use default message
+        }
         throw {
-          message: `HTTP ${response.status}: ${response.statusText}`,
+          message: errorMessage,
           status: response.status,
         } as ApiError;
       }

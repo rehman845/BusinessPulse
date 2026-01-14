@@ -19,6 +19,8 @@ import {
   MessageSquare,
   UserCog,
   CheckSquare,
+  CreditCard,
+  UserCircle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -68,6 +70,11 @@ export const mainNavigation: NavItem[] = [
     icon: Briefcase,
   },
   {
+    title: "Team",
+    url: "/dashboard/team",
+    icon: UserCircle,
+  },
+  {
     title: "Tasks",
     url: "/dashboard/tasks",
     icon: CheckSquare,
@@ -90,6 +97,11 @@ export const mainNavigation: NavItem[] = [
         url: "/dashboard/invoices/overdue",
       },
     ],
+  },
+  {
+    title: "Billing",
+    url: "/dashboard/billing",
+    icon: CreditCard,
   },
   {
     title: "Product & Services",

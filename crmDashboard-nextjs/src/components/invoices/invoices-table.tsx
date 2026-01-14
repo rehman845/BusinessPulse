@@ -69,12 +69,13 @@ export function InvoicesTable({
       sorting,
       pagination,
     },
+    pageCount,
     onSortingChange: onSort,
     onPaginationChange: onPaginationChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    manualPagination: false,
-    pageCount,
+    manualPagination: true,
+    manualSorting: true,
   });
 
   if (invoices.length === 0) {
@@ -100,7 +101,6 @@ export function InvoicesTable({
                   <ProjectsTableHeaderCell
                     key={header.id}
                     header={header}
-                    canSort={header.column.getCanSort()}
                   />
                 ))}
               </TableRow>
@@ -123,7 +123,6 @@ export function InvoicesTable({
       <ProjectsTablePagination
         table={table}
         totalRows={totalRows}
-        pagination={pagination}
       />
     </div>
   );

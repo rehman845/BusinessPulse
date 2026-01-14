@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -10,37 +11,68 @@ import {
   ArrowUpRight,
   ArrowDownRight
 } from "lucide-react";
+import { invoicesService } from "@/api/services";
+import { formatCurrency } from "@/utils/format";
+import { RevenueBreakdownDialog } from "@/components/dashboard/revenue-breakdown-dialog";
+import type { Invoice } from "@/types";
 
 export function DashboardPage() {
+  const [revenueBreakdownOpen, setRevenueBreakdownOpen] = useState(false);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [loadingRevenue, setLoadingRevenue] = useState(true);
+
+  useEffect(() => {
+    loadRevenue();
+  }, []);
+
+  const loadRevenue = async () => {
+    try {
+      setLoadingRevenue(true);
+      const invoices = await invoicesService.getInvoices({ status: "paid" });
+      const revenue = invoices.reduce((sum, invoice: Invoice) => {
+        return sum + (invoice.total || invoice.totalAmount || 0);
+      }, 0);
+      setTotalRevenue(revenue);
+    } catch (error) {
+      console.error("Failed to load revenue", error);
+    } finally {
+      setLoadingRevenue(false);
+    }
+  };
+
   // Sample statistics
   const stats = [
     {
       title: "Total Revenue",
-      value: "$0.00",
+      value: loadingRevenue ? "Loading..." : formatCurrency(totalRevenue),
       change: "+0%",
-      trend: "up",
+      trend: "up" as const,
       icon: DollarSign,
+      clickable: true,
     },
     {
       title: "Active Agreements",
       value: "0",
       change: "+0%",
-      trend: "up",
+      trend: "up" as const,
       icon: FileText,
+      clickable: false,
     },
     {
       title: "Pending Orders",
       value: "0",
       change: "-0%",
-      trend: "down",
+      trend: "down" as const,
       icon: ShoppingCart,
+      clickable: false,
     },
     {
       title: "Growth Rate",
       value: "0%",
       change: "+0%",
-      trend: "up",
+      trend: "up" as const,
       icon: TrendingUp,
+      clickable: false,
     },
   ];
 
@@ -62,7 +94,11 @@ export function DashboardPage() {
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat, index) => (
-          <Card key={index}>
+          <Card 
+            key={index}
+            className={stat.clickable ? "cursor-pointer hover:shadow-md transition-shadow" : ""}
+            onClick={() => stat.clickable && setRevenueBreakdownOpen(true)}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
                 {stat.title}
@@ -161,7 +197,12 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Revenue Breakdown Dialog */}
+      <RevenueBreakdownDialog 
+        open={revenueBreakdownOpen}
+        onOpenChange={setRevenueBreakdownOpen}
+      />
     </div>
   );
 }
-

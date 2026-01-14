@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import String, DateTime, ForeignKey, Text, Integer, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Numeric, Boolean
 
 from .db import Base
 
@@ -25,6 +26,29 @@ class Customer(Base):
     analyses: Mapped[list["ProjectAnalysis"]] = relationship("ProjectAnalysis", back_populates="customer")
     questionnaires: Mapped[list["Questionnaire"]] = relationship("Questionnaire", back_populates="customer")
     proposals: Mapped[list["Proposal"]] = relationship("Proposal", back_populates="customer")
+    projects: Mapped[list["Project"]] = relationship("Project", back_populates="customer")
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    project_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    customer_id: Mapped[str] = mapped_column(String, ForeignKey("customers.id"), nullable=False)
+    customer_name: Mapped[str] = mapped_column(String(200), nullable=False)  # Denormalized for convenience
+    email: Mapped[str] = mapped_column(String(200), nullable=False)  # Customer email, denormalized
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="planning")  # planning/execution/on_hold/completed/cancelled
+    start_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    end_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    budget: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assigned_to: Mapped[str | None] = mapped_column(String(500), nullable=True)  # Denormalized from project_employees for display
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
+
+    customer: Mapped["Customer"] = relationship("Customer", back_populates="projects")
 
 
 class Document(Base):
@@ -178,6 +202,120 @@ class Resource(Base):
     )
 
 
+# =========================
+# Billing / Team / Invoicing
+# =========================
+
+class Employee(Base):
+    __tablename__ = "employees"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    role: Mapped[str] = mapped_column(String(120), nullable=False, default="Employee")
+    hourly_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    hours_per_day: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False, default=8.0)
+    days_per_week: Mapped[float] = mapped_column(Numeric(3, 1), nullable=False, default=5.0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
+
+    time_entries: Mapped[list["TimeEntry"]] = relationship("TimeEntry", back_populates="employee")
+    project_assignments: Mapped[list["ProjectEmployee"]] = relationship(
+        "ProjectEmployee", back_populates="employee", cascade="all, delete-orphan"
+    )
+
+
+class TimeEntry(Base):
+    __tablename__ = "time_entries"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    employee_id: Mapped[str] = mapped_column(String, ForeignKey("employees.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    work_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    hours: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    employee: Mapped["Employee"] = relationship("Employee", back_populates="time_entries")
+
+
+class BillingExpense(Base):
+    """
+    Tracks company expenses: subscriptions, cloud, tools, vendor bills, consultants, etc.
+    Optionally link an expense to a project_id so it can be included in invoice generation.
+    """
+    __tablename__ = "billing_expenses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+
+    expense_type: Mapped[str] = mapped_column(String(40), nullable=False, default="subscription")
+    vendor_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD")
+
+    frequency: Mapped[str] = mapped_column(String(20), nullable=False, default="one_time")  # one_time/monthly/yearly
+    due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    paid_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    project_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
+
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    invoice_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+
+    customer_id: Mapped[str | None] = mapped_column(String, ForeignKey("customers.id"), nullable=True)
+    customer_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    customer_email: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+
+    project_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    project_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")  # draft/sent/paid/overdue/cancelled
+    issue_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    due_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    paid_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    subtotal: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    tax: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
+
+    line_items: Mapped[list["InvoiceLineItem"]] = relationship("InvoiceLineItem", back_populates="invoice")
+    customer: Mapped["Customer"] = relationship("Customer")
+
+
+class InvoiceLineItem(Base):
+    __tablename__ = "invoice_line_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    invoice_id: Mapped[str] = mapped_column(String, ForeignKey("invoices.id"), nullable=False)
+
+    category: Mapped[str] = mapped_column(String(40), nullable=False, default="other")  # labor/subscription/vendor/other
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    quantity: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=1)
+    unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    invoice: Mapped["Invoice"] = relationship("Invoice", back_populates="line_items")
+
+
 class ProjectResource(Base):
     """Stores outsourcing resources associated with projects"""
     __tablename__ = "project_resources"
@@ -197,6 +335,20 @@ class ProjectResource(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
 
     resource: Mapped["Resource"] = relationship("Resource", back_populates="assignments")
+
+
+class ProjectEmployee(Base):
+    """Stores employees assigned to projects"""
+    __tablename__ = "project_employees"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String, nullable=False)  # Project ID (from frontend localStorage)
+    employee_id: Mapped[str] = mapped_column(String, ForeignKey("employees.id"), nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
+
+    employee: Mapped["Employee"] = relationship("Employee", back_populates="project_assignments")
 
 
 class Task(Base):

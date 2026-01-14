@@ -1,60 +1,40 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Project, ProjectFilters } from "@/types";
 import {
   SortingState,
   PaginationState,
   OnChangeFn,
 } from "@tanstack/react-table";
-
-const STORAGE_KEY = "crm_projects";
-
-// Load projects from localStorage
-function loadProjectsFromStorage(): Project[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : [];
-    }
-  } catch (e) {
-    console.error("Failed to load projects from storage", e);
-  }
-  return [];
-}
-
-// Save projects to localStorage
-function saveProjectsToStorage(projects: Project[]) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-  } catch (e) {
-    console.error("Failed to save projects to storage", e);
-  }
-}
+import { projectsService } from "@/api/services/projects.service";
+import { toast } from "sonner";
 
 interface UseProjectsProps {
   initialProjects?: Project[];
 }
 
 export function useProjects({ initialProjects }: UseProjectsProps = {}) {
-  // Initialize from localStorage if available, otherwise use provided initialProjects
-  const [projectsList, setProjectsList] = useState<Project[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = loadProjectsFromStorage();
-      if (stored.length > 0) return stored;
-    }
-    return initialProjects || [];
-  });
+  const [projectsList, setProjectsList] = useState<Project[]>(initialProjects || []);
+  const [loading, setLoading] = useState(true);
 
-  // Sync with localStorage whenever projectsList changes
-  useEffect(() => {
-    saveProjectsToStorage(projectsList);
-    // Dispatch custom event for same-tab updates (storage event only fires across tabs)
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("crm-projects-updated"));
+  // Load projects from API
+  const loadProjects = useCallback(async () => {
+    try {
+      setLoading(true);
+      const projects = await projectsService.getProjects();
+      setProjectsList(projects);
+    } catch (error: any) {
+      toast.error("Failed to load projects", {
+        description: error.message || "Please try again",
+      });
+      console.error("Failed to load projects:", error);
+    } finally {
+      setLoading(false);
     }
-  }, [projectsList]);
+  }, []);
+
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
   
   const [filters, setFilters] = useState<ProjectFilters>({
     status: "all",
@@ -215,45 +195,63 @@ export function useProjects({ initialProjects }: UseProjectsProps = {}) {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   };
 
-  const addProject = (project: Project) => {
-    setProjectsList((prev) => {
-      const updated = [...prev, project];
-      saveProjectsToStorage(updated);
-      return updated;
-    });
+  const addProject = async (project: Project) => {
+    try {
+      // Project should already be created via API before this is called
+      // Just add it to the local state
+      setProjectsList((prev) => [...prev, project]);
+    } catch (error: any) {
+      toast.error("Failed to add project", { description: error.message });
+      throw error;
+    }
   };
 
-  const updateProject = (projectId: string, updates: Partial<Project>) => {
-    setProjectsList((prev) => {
-      const updated = prev.map((p) => (p.id === projectId ? { ...p, ...updates } : p));
-      saveProjectsToStorage(updated);
-      return updated;
-    });
+  const updateProject = async (projectId: string, updates: Partial<Project>) => {
+    try {
+      const updatedProject = await projectsService.updateProject(projectId, {
+        projectNumber: updates.projectNumber,
+        projectName: updates.projectName,
+        customerId: updates.customerId,
+        customerName: updates.customerName,
+        email: updates.email,
+        status: updates.status,
+        startDate: updates.startDate,
+        endDate: updates.endDate,
+        budget: updates.budget,
+        description: updates.description,
+        assignedTo: updates.assignedTo,
+      });
+      setProjectsList((prev) => prev.map((p) => (p.id === projectId ? updatedProject : p)));
+      toast.success("Project updated");
+    } catch (error: any) {
+      toast.error("Failed to update project", { description: error.message });
+      throw error;
+    }
   };
 
   const deleteProject = async (projectId: string) => {
-    // Delete all tasks for this project from backend (cascade delete)
     try {
-      const { tasksService } = await import("@/api");
-      await tasksService.deleteAllProjectTasks(projectId);
-    } catch (error) {
-      // Log but don't fail - tasks might not exist or backend might be unavailable
-      console.warn("Failed to delete project tasks:", error);
+      // Delete all tasks for this project from backend (cascade delete)
+      try {
+        const { tasksService } = await import("@/api");
+        await tasksService.deleteAllProjectTasks(projectId);
+      } catch (error) {
+        // Log but don't fail - tasks might not exist or backend might be unavailable
+        console.warn("Failed to delete project tasks:", error);
+      }
+
+      // Delete project from API
+      await projectsService.deleteProject(projectId);
+      setProjectsList((prev) => prev.filter((p) => p.id !== projectId));
+      toast.success("Project deleted");
+    } catch (error: any) {
+      toast.error("Failed to delete project", { description: error.message });
+      throw error;
     }
-
-    // Delete project from local storage
-    setProjectsList((prev) => {
-      const updated = prev.filter((p) => p.id !== projectId);
-      saveProjectsToStorage(updated);
-      return updated;
-    });
   };
 
-  // Function to refresh from storage (useful when navigating between pages)
-  const refreshFromStorage = () => {
-    const stored = loadProjectsFromStorage();
-    setProjectsList(stored);
-  };
+  // Function to refresh from API
+  const refreshFromStorage = loadProjects;
 
   return {
     // Raw filtered projects (no pagination applied)
@@ -266,6 +264,7 @@ export function useProjects({ initialProjects }: UseProjectsProps = {}) {
     filters,
     sorting,
     pagination,
+    loading,
     // Update handlers
     updateFilters,
     handleSortingChange,
@@ -277,7 +276,9 @@ export function useProjects({ initialProjects }: UseProjectsProps = {}) {
     deleteProject,
     // All projects (unfiltered)
     allProjectsList: projectsList,
-    // Refresh from storage
+    // Refresh from API
     refreshFromStorage,
+    // Reload function
+    loadProjects,
   };
 }

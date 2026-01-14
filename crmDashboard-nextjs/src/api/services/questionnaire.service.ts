@@ -22,9 +22,17 @@ export interface Questionnaire {
   notes?: string;
 }
 
+export interface QuestionnaireQuestionItem {
+  id: string;
+  text: string;
+  priority: string;
+  topic_category: string;
+}
+
 export interface QuestionnaireEnvelope {
   questionnaire_id: string;
   data: Questionnaire;
+  questions?: QuestionnaireQuestionItem[];
 }
 
 export const questionnaireService = {
