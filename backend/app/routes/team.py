@@ -103,16 +103,17 @@ def list_time_entries(
     employee_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    query = db.query(models.TimeEntry).order_by(models.TimeEntry.work_date.desc())
+    # Use joinedload to avoid N+1 query problem - loads employees in single query
+    query = (
+        db.query(models.TimeEntry)
+        .options(joinedload(models.TimeEntry.employee))
+        .order_by(models.TimeEntry.work_date.desc())
+    )
     if project_id:
         query = query.filter(models.TimeEntry.project_id == project_id)
     if employee_id:
         query = query.filter(models.TimeEntry.employee_id == employee_id)
-    entries = query.all()
-    # Attach employee (lightweight)
-    for e in entries:
-        e.employee = db.query(models.Employee).filter(models.Employee.id == e.employee_id).first()
-    return entries
+    return query.all()
 
 
 # -----------------------------

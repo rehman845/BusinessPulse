@@ -9,6 +9,8 @@ export async function GET(request: NextRequest) {
       headers: {
         "Content-Type": "application/json",
       },
+      // Enable caching at the fetch level
+      next: { revalidate: 5 }, // Revalidate every 5 seconds
     });
 
     if (!response.ok) {
@@ -20,7 +22,11 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    
+    // Add cache headers for client-side caching
+    const res = NextResponse.json(data);
+    res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=10");
+    return res;
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Failed to fetch projects" },

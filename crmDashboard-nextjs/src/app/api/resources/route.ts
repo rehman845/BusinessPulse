@@ -9,6 +9,7 @@ export async function GET() {
       headers: {
         "Content-Type": "application/json",
       },
+      next: { revalidate: 5 },
     });
 
     if (!response.ok) {
@@ -20,7 +21,9 @@ export async function GET() {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    const res = NextResponse.json(data);
+    res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=10");
+    return res;
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Failed to fetch resources" },
