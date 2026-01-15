@@ -168,7 +168,7 @@ export function RevenueBreakdownDialog({ open, onOpenChange }: RevenueBreakdownD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="!max-w-[85vw] sm:!max-w-4xl lg:!max-w-5xl w-full max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Monthly Revenue Breakdown</DialogTitle>
           <DialogDescription>
@@ -189,8 +189,8 @@ export function RevenueBreakdownDialog({ open, onOpenChange }: RevenueBreakdownD
                   <CardTitle className="text-sm font-medium">Total Profits</CardTitle>
                   <TrendingUp className="h-4 w-4 text-green-500 shrink-0" />
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600 break-words">
+                <CardContent className="min-w-0">
+                  <div className="text-2xl font-bold text-green-600 whitespace-nowrap overflow-hidden text-ellipsis">
                     {formatCurrency(totalProfits)}
                   </div>
                 </CardContent>
@@ -201,8 +201,8 @@ export function RevenueBreakdownDialog({ open, onOpenChange }: RevenueBreakdownD
                   <CardTitle className="text-sm font-medium">Total Expenditures</CardTitle>
                   <TrendingDown className="h-4 w-4 text-red-500 shrink-0" />
                 </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600 break-words">
+                <CardContent className="min-w-0">
+                  <div className="text-2xl font-bold text-red-600 whitespace-nowrap overflow-hidden text-ellipsis">
                     {formatCurrency(totalExpenditures)}
                   </div>
                 </CardContent>
@@ -213,8 +213,8 @@ export function RevenueBreakdownDialog({ open, onOpenChange }: RevenueBreakdownD
                   <CardTitle className="text-sm font-medium">Net Revenue</CardTitle>
                   <DollarSign className="h-4 w-4 text-muted-foreground shrink-0" />
                 </CardHeader>
-                <CardContent>
-                  <div className={`text-2xl font-bold break-words ${grandTotal >= 0 ? "text-green-600" : "text-red-600"}`}>
+                <CardContent className="min-w-0">
+                  <div className={`text-2xl font-bold whitespace-nowrap overflow-hidden text-ellipsis ${grandTotal >= 0 ? "text-green-600" : "text-red-600"}`}>
                     {formatCurrency(grandTotal)}
                   </div>
                 </CardContent>
@@ -239,49 +239,49 @@ export function RevenueBreakdownDialog({ open, onOpenChange }: RevenueBreakdownD
                   return (
                     <Card key={index} className="overflow-hidden">
                       <CardHeader>
-                        <CardTitle className="text-base break-words">{month.month}</CardTitle>
+                        <CardTitle className="text-lg font-semibold">{month.month}</CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-4">
-                        {/* Profits */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="min-w-0">
-                            <p className="text-sm text-muted-foreground">Profits (Paid Invoices)</p>
-                            <p className="text-lg font-semibold text-green-600 break-words">
+                      <CardContent className="space-y-6">
+                        {/* Profits and Net */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium text-muted-foreground">Profits (Paid Invoices)</p>
+                            <p className="text-2xl font-bold text-green-600 whitespace-nowrap">
                               {formatCurrency(month.profits)}
                             </p>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-sm text-muted-foreground">Net</p>
-                            <p className={`text-lg font-semibold break-words ${month.net >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium text-muted-foreground">Net Revenue</p>
+                            <p className={`text-2xl font-bold whitespace-nowrap ${month.net >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {formatCurrency(month.net)}
                             </p>
                           </div>
                         </div>
 
                         {/* Expenditures Breakdown */}
-                        <div className="min-w-0">
-                          <p className="text-sm text-muted-foreground mb-2">Expenditures:</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                            <div className="flex justify-between gap-2 min-w-0">
-                              <span className="truncate">Billing Expenses:</span>
-                              <span className="font-medium shrink-0">{formatCurrency(month.expenditures.billing)}</span>
+                        <div className="space-y-3 pt-4 border-t">
+                          <p className="text-sm font-semibold text-muted-foreground mb-3">Expenditures</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="flex justify-between items-center gap-4 py-2">
+                              <span className="text-sm text-muted-foreground">Billing Expenses</span>
+                              <span className="text-sm font-semibold whitespace-nowrap">{formatCurrency(month.expenditures.billing)}</span>
                             </div>
-                            <div className="flex justify-between gap-2 min-w-0">
-                              <span className="truncate">Employee Salaries:</span>
-                              <span className="font-medium shrink-0">{formatCurrency(month.expenditures.salaries)}</span>
+                            <div className="flex justify-between items-center gap-4 py-2">
+                              <span className="text-sm text-muted-foreground">Employee Salaries</span>
+                              <span className="text-sm font-semibold whitespace-nowrap">{formatCurrency(month.expenditures.salaries)}</span>
                             </div>
-                            <div className="flex justify-between gap-2 min-w-0">
-                              <span className="truncate">Subscriptions:</span>
-                              <span className="font-medium shrink-0">{formatCurrency(month.expenditures.subscriptions)}</span>
+                            <div className="flex justify-between items-center gap-4 py-2">
+                              <span className="text-sm text-muted-foreground">Subscriptions</span>
+                              <span className="text-sm font-semibold whitespace-nowrap">{formatCurrency(month.expenditures.subscriptions)}</span>
                             </div>
-                            <div className="flex justify-between gap-2 min-w-0">
-                              <span className="truncate">Outsourcing:</span>
-                              <span className="font-medium shrink-0">{formatCurrency(month.expenditures.outsourcing)}</span>
+                            <div className="flex justify-between items-center gap-4 py-2">
+                              <span className="text-sm text-muted-foreground">Outsourcing</span>
+                              <span className="text-sm font-semibold whitespace-nowrap">{formatCurrency(month.expenditures.outsourcing)}</span>
                             </div>
-                            <div className="flex justify-between gap-2 col-span-1 sm:col-span-2 pt-2 border-t min-w-0">
-                              <span className="font-semibold truncate">Total Expenditures:</span>
-                              <span className="font-bold text-red-600 shrink-0">{formatCurrency(totalExp)}</span>
-                            </div>
+                          </div>
+                          <div className="flex justify-between items-center gap-4 pt-3 mt-3 border-t">
+                            <span className="text-base font-bold">Total Expenditures</span>
+                            <span className="text-base font-bold text-red-600 whitespace-nowrap">{formatCurrency(totalExp)}</span>
                           </div>
                         </div>
                       </CardContent>

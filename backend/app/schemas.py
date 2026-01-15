@@ -52,15 +52,21 @@ DocType = Literal[
 
 class CustomerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    email: Optional[str] = Field(None, max_length=200)
+    company_name: Optional[str] = Field(None, max_length=200)
 
 
 class CustomerUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    email: Optional[str] = Field(None, max_length=200)
+    company_name: Optional[str] = Field(None, max_length=200)
 
 
 class CustomerOut(BaseModel):
     id: str
     name: str
+    email: Optional[str] = None
+    company_name: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

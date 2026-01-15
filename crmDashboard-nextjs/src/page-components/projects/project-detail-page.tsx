@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Project } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,7 @@ const statusLabels: Record<Project["status"], string> = {
 
 export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { updateProject, deleteProject } = useProjects();
   const [project, setProject] = useState<Project | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -76,7 +77,14 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   const [file, setFile] = useState<File | null>(null);
   const [generatingQn, setGeneratingQn] = useState(false);
   const [generatingProposal, setGeneratingProposal] = useState(false);
-  const [viewMode, setViewMode] = useState<"details" | "documents" | "resources" | "tasks">("details");
+  
+  // Initialize viewMode from URL parameter or default to "details"
+  const initialViewMode = searchParams?.get("view") as "details" | "documents" | "resources" | "tasks" | null;
+  const [viewMode, setViewMode] = useState<"details" | "documents" | "resources" | "tasks">(
+    (initialViewMode && ["details", "documents", "resources", "tasks"].includes(initialViewMode)) 
+      ? initialViewMode 
+      : "details"
+  );
   const [projectResources, setProjectResources] = useState<ProjectResourceAssignment[]>([]);
   const [loadingProjectResources, setLoadingProjectResources] = useState(false);
   const [availableResources, setAvailableResources] = useState<Resource[]>([]);
@@ -98,6 +106,14 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     setAssignmentForm((prev) => ({ ...prev, project_id: projectId }));
   }, [projectId]);
 
+  // Update viewMode when URL parameter changes
+  useEffect(() => {
+    const viewParam = searchParams?.get("view");
+    if (viewParam && ["details", "documents", "resources", "tasks"].includes(viewParam)) {
+      setViewMode(viewParam as "details" | "documents" | "resources" | "tasks");
+    }
+  }, [searchParams]);
+
   const loadProjectDocuments = async (customerId: string) => {
     try {
       setLoadingDocs(true);
@@ -117,7 +133,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
       const res = await resourcesService.getProjectResources(projectId);
       setProjectResources(res);
     } catch (error: any) {
-      toast.error("Failed to load project resources", { description: error.message || "Please try again" });
+      toast.error("Failed to load project partner companies", { description: error.message || "Please try again" });
     } finally {
       setLoadingProjectResources(false);
     }
@@ -129,7 +145,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
       const data = await resourcesService.getResources();
       setAvailableResources(data);
     } catch (error: any) {
-      toast.error("Failed to load available resources", { description: error.message || "Please try again" });
+      toast.error("Failed to load available partner companies", { description: error.message || "Please try again" });
     } finally {
       setLoadingResourcePool(false);
     }
@@ -147,7 +163,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
           loadProjectDocuments(loadedProject.customerId);
         }
         loadProjectResources();
-        // Also load employees so they're ready when user clicks "View Resources"
+        // Also load employees so they're ready when user clicks "View Partner Companies"
         loadProjectEmployees();
         loadAvailableEmployees();
       } catch (error: any) {
@@ -274,14 +290,14 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
       if (oldStatus !== "execution" && newStatus === "execution") {
         // Project entering execution - deduct hours
         const result = await resourcesService.activateProjectResources(projectId);
-        toast.success(`Project started. ${result.activated} resource assignment(s) activated.`);
+        toast.success(`Project started. ${result.activated} partner company assignment(s) activated.`);
         // Reload resources to show updated committed status
         await loadProjectResources();
         await loadAvailableResources();
       } else if (oldStatus === "execution" && newStatus !== "execution") {
         // Project leaving execution - return hours
         const result = await resourcesService.deactivateProjectResources(projectId);
-        toast.success(`Project status changed. ${result.deactivated} resource assignment(s) deactivated.`);
+        toast.success(`Project status changed. ${result.deactivated} partner company assignment(s) deactivated.`);
         // Reload resources to show updated committed status
         await loadProjectResources();
         await loadAvailableResources();
@@ -296,7 +312,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         toast.success(statusMessages[newStatus]);
       }
     } catch (error: any) {
-      toast.error("Failed to update resource assignments", { description: error.message || "Please try again" });
+      toast.error("Failed to update partner company assignments", { description: error.message || "Please try again" });
     }
   };
 
@@ -402,7 +418,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     e.preventDefault();
     if (!project) return;
     if (!assignmentForm.resource_id) {
-      toast.error("Please select a resource");
+      toast.error("Please select a partner company");
       return;
     }
     if (assignmentForm.allocated_hours <= 0) {
@@ -412,7 +428,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
 
     const selected = availableResources.find((res) => res.id === assignmentForm.resource_id);
     if (!selected) {
-      toast.error("Selected resource not found");
+      toast.error("Selected partner company not found");
       return;
     }
     if (assignmentForm.allocated_hours > selected.available_hours) {
@@ -425,7 +441,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
     try {
       setAssigningResource(true);
       await resourcesService.assignResourceToProject(assignmentForm);
-      toast.success("Resource assigned to project");
+      toast.success("Partner company assigned to project");
       setAssignmentForm({
         project_id: projectId,
         resource_id: "",
@@ -433,22 +449,22 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
       });
       await Promise.all([loadProjectResources(), loadAvailableResources()]);
     } catch (error: any) {
-      toast.error("Failed to assign resource", { description: error.message || "Please try again" });
+      toast.error("Failed to assign partner company", { description: error.message || "Please try again" });
     } finally {
       setAssigningResource(false);
     }
   };
 
   const handleDeleteResource = async (assignmentId: string) => {
-    if (!window.confirm("Remove this resource from the project?")) {
+    if (!window.confirm("Remove this partner company from the project?")) {
       return;
     }
     try {
       await resourcesService.deleteProjectResource(projectId, assignmentId);
-      toast.success("Resource removed from project");
+      toast.success("Partner company removed from project");
       await Promise.all([loadProjectResources(), loadAvailableResources()]);
     } catch (error: any) {
-      toast.error("Failed to delete resource", { description: error.message || "Please try again" });
+      toast.error("Failed to remove partner company", { description: error.message || "Please try again" });
     }
   };
 
@@ -553,10 +569,10 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 w-full max-w-full overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-4 min-w-0">
           <Button
             variant="ghost"
             size="icon"
@@ -564,19 +580,19 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              {project.projectName}
-              <Badge className={statusColors[project.status]}>
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 flex-wrap">
+              <span className="truncate">{project.projectName}</span>
+              <Badge className={`${statusColors[project.status]} shrink-0`}>
                 {statusLabels[project.status]}
               </Badge>
             </h1>
-            <p className="text-muted-foreground mt-2">
+            <p className="text-muted-foreground mt-2 truncate">
               {project.projectNumber}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {project.status === "planning" && (
             <Button onClick={() => handleStatusChange("execution")}>
               <PlayCircle className="mr-2 h-4 w-4" />
@@ -612,7 +628,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
               </Button>
               <Button variant="outline" onClick={handleViewResources}>
                 <Users className="mr-2 h-4 w-4" />
-                View Resources
+                View Partner Companies
               </Button>
               <Button variant="outline" onClick={() => setViewMode("tasks")}>
                 <CheckSquare className="mr-2 h-4 w-4" />
@@ -668,7 +684,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
       {/* Conditional Rendering Based on View Mode */}
       {viewMode === "details" ? (
         /* Main Content Grid - Project Details View */
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2 w-full max-w-full">
           {/* Project Information */}
           <Card>
             <CardHeader>
@@ -810,7 +826,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
         </div>
       ) : viewMode === "documents" ? (
         /* Documents View - Shows Documents, Questionnaire & Proposal Generators */
-        <div className="space-y-6">
+        <div className="space-y-6 w-full max-w-full overflow-x-hidden">
           {/* Documents Section */}
           <Card>
         <CardHeader>
@@ -875,7 +891,8 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
               <p className="text-sm text-muted-foreground">No documents uploaded for this project yet.</p>
             </div>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Filename</TableHead>
@@ -950,6 +967,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -1032,10 +1050,10 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
                   <div>
                     <CardTitle className="flex items-center gap-2">
                       <Users className="h-5 w-5" />
-                      Resource Pool
+                      Partner Company Pool
                     </CardTitle>
                     <CardDescription>
-                      Global pool of outsourcing companies and available hours
+                      Global pool of partner companies and available hours
                     </CardDescription>
                   </div>
                   <Button variant="outline" onClick={() => loadAvailableResources()}>
@@ -1051,11 +1069,11 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
                 ) : availableResources.length === 0 ? (
                   <div className="rounded-md border border-dashed p-6 text-center">
                     <p className="text-sm text-muted-foreground">
-                      No resources in the pool yet. Use the new Resources tab in the sidebar to add them.
+                      No partner companies in the pool yet. Use the new Partner Companies tab in the sidebar to add them.
                     </p>
                   </div>
                 ) : (
-                  <div className="rounded-md border">
+                  <div className="rounded-md border overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1088,16 +1106,16 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
 
                 <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
                   <div>
-                    <h4 className="text-sm font-semibold">Assign resource to this project</h4>
+                    <h4 className="text-sm font-semibold">Assign partner company to this project</h4>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Resources can be assigned at any time. Hours will be deducted when project enters execution.
+                      Partner companies can be assigned at any time. Hours will be deducted when project enters execution.
                     </p>
                   </div>
                   <form onSubmit={handleAssignResource} className="space-y-3">
                     <div className="grid gap-3">
                       <div className="grid md:grid-cols-2 gap-3">
                         <div>
-                          <label className="text-sm font-medium mb-1 block">Resource</label>
+                          <label className="text-sm font-medium mb-1 block">Partner Company</label>
                           <Select
                             value={assignmentForm.resource_id}
                             onValueChange={(value) =>
@@ -1106,7 +1124,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
                             disabled={availableResources.length === 0}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder="Select resource" />
+                              <SelectValue placeholder="Select partner company" />
                             </SelectTrigger>
                             <SelectContent>
                               {availableResources
@@ -1162,7 +1180,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
               <CardHeader>
                 <CardTitle>Project Assignments</CardTitle>
                 <CardDescription>
-                  Resources currently dedicated to this project with allotted hours
+                  Partner companies currently dedicated to this project with allotted hours
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1173,15 +1191,15 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
                 ) : projectResources.length === 0 ? (
                   <div className="rounded-md border border-dashed p-6 text-center">
                     <p className="text-sm text-muted-foreground">
-                      No resources assigned yet. Use the form to assign available resources.
+                      No partner companies assigned yet. Use the form to assign available partner companies.
                     </p>
                   </div>
                 ) : (
-                  <div className="rounded-md border">
+                  <div className="rounded-md border overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Resource</TableHead>
+                          <TableHead>Partner Company</TableHead>
                           <TableHead>Company</TableHead>
                           <TableHead className="text-right">Hours Allocated</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -1191,7 +1209,7 @@ export function ProjectDetailPage({ projectId }: ProjectDetailPageProps) {
                         {projectResources.map((resource) => (
                           <TableRow key={resource.id}>
                             <TableCell className="font-medium">
-                              {resource.resource?.resource_name || resource.resource_name || "Resource"}
+                              {resource.resource?.resource_name || resource.resource_name || "Partner Company"}
                             </TableCell>
                             <TableCell>{resource.resource?.company_name || resource.company_name || "N/A"}</TableCell>
                             <TableCell className="text-right">

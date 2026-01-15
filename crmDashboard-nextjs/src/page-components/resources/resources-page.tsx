@@ -52,7 +52,7 @@ export function ResourcesPage() {
       const data = await resourcesService.getResources();
       setResources(data);
     } catch (error: any) {
-      toast.error("Failed to load resources", { description: error.message || "Please try again" });
+      toast.error("Failed to load partner companies", { description: error.message || "Please try again" });
     } finally {
       setLoading(false);
     }
@@ -65,18 +65,18 @@ export function ResourcesPage() {
   const handleCreateResource = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.resource_name.trim() || !formData.company_name.trim() || formData.total_hours <= 0) {
-      toast.error("Please provide valid resource details");
+      toast.error("Please provide valid partner company details");
       return;
     }
 
     try {
       setCreating(true);
       await resourcesService.createResource(formData);
-      toast.success("Resource added");
+      toast.success("Partner company added");
       setFormData(defaultForm);
       await loadResources();
     } catch (error: any) {
-      toast.error("Failed to add resource", { description: error.message || "Please try again" });
+      toast.error("Failed to add partner company", { description: error.message || "Please try again" });
     } finally {
       setCreating(false);
     }
@@ -105,13 +105,13 @@ export function ResourcesPage() {
     try {
       setSavingEdit(true);
       await resourcesService.updateResource(editResource.id, editForm);
-      toast.success("Resource updated");
+      toast.success("Partner company updated");
       setEditDialogOpen(false);
       setEditResource(null);
       setEditForm({});
       await loadResources();
     } catch (error: any) {
-      toast.error("Failed to update resource", { description: error.message || "Please try again" });
+      toast.error("Failed to update partner company", { description: error.message || "Please try again" });
     } finally {
       setSavingEdit(false);
     }
@@ -120,7 +120,7 @@ export function ResourcesPage() {
   const handleDeleteResource = async (resource: Resource) => {
     if (
       !window.confirm(
-        `Delete ${resource.resource_name}? This will fail if the resource is assigned to any project.`
+        `Delete ${resource.resource_name}? This will fail if the partner company is assigned to any project.`
       )
     ) {
       return;
@@ -128,17 +128,17 @@ export function ResourcesPage() {
 
     try {
       await resourcesService.deleteResource(resource.id);
-      toast.success("Resource deleted");
+      toast.success("Partner company deleted");
       await loadResources();
     } catch (error: any) {
-      toast.error("Failed to delete resource", { description: error.message || "Please remove project assignments first" });
+      toast.error("Failed to delete partner company", { description: error.message || "Please remove project assignments first" });
     }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Resources</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Partner Companies</h1>
         <p className="text-sm text-muted-foreground">
           Manage your outsourcing partners, their availability, and keep track of global capacity.
         </p>
@@ -146,15 +146,15 @@ export function ResourcesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Add Resource</CardTitle>
+          <CardTitle>Add Partner Company</CardTitle>
           <CardDescription>
-            Capture resource name, company, and the total number of hours they can contribute.
+            Capture contact name, company name, and the total number of hours they can contribute.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreateResource} className="grid gap-4 md:grid-cols-3">
             <div>
-              <label className="text-sm font-medium mb-1 block">Resource Name</label>
+              <label className="text-sm font-medium mb-1 block">Contact Name</label>
               <Input
                 placeholder="Jane Smith"
                 value={formData.resource_name}
@@ -197,7 +197,7 @@ export function ResourcesPage() {
                 ) : (
                   <>
                     <Plus className="mr-2 h-4 w-4" />
-                    Add Resource
+                    Add Partner Company
                   </>
                 )}
               </Button>
@@ -208,8 +208,8 @@ export function ResourcesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Resource Inventory</CardTitle>
-          <CardDescription>Overview of all resources and their remaining availability</CardDescription>
+          <CardTitle>Partner Companies</CardTitle>
+          <CardDescription>Overview of all partner companies and their remaining availability</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -218,7 +218,7 @@ export function ResourcesPage() {
             </div>
           ) : resources.length === 0 ? (
             <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No resources yet. Use the form above to add your first resource.
+              No partner companies yet. Use the form above to add your first partner company.
             </div>
           ) : (
             <div className="rounded-md border">
@@ -273,13 +273,13 @@ export function ResourcesPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Resource</DialogTitle>
-            <DialogDescription>Update the resource details and capacity.</DialogDescription>
+            <DialogTitle>Edit Partner Company</DialogTitle>
+            <DialogDescription>Update the partner company details and capacity.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="text-sm font-medium mb-1 block">Resource Name</label>
+                <label className="text-sm font-medium mb-1 block">Contact Name</label>
                 <Input
                   value={editForm.resource_name ?? ""}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, resource_name: e.target.value }))}

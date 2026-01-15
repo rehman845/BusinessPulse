@@ -119,7 +119,7 @@ export const mainNavigation: NavItem[] = [
     icon: Users,
   },
   {
-    title: "Resources",
+    title: "Partner Companies",
     url: "/dashboard/resources",
     icon: UserCog,
   },

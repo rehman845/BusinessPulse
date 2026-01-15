@@ -118,9 +118,12 @@ export function NewProjectDialog({
     try {
       const data = await teamService.getEmployees(true); // only active employees
       setEmployees(Array.isArray(data) ? data : []);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to load employees", error);
-      toast.error("Failed to load employees");
+      const errorMessage = error?.message || error?.error || "Please try again";
+      toast.error("Failed to load employees", {
+        description: errorMessage,
+      });
     } finally {
       setLoadingEmployees(false);
     }
@@ -144,7 +147,7 @@ export function NewProjectDialog({
         ...formData,
         customerId: customer.id,
         customerName: customer.name,
-        email: "", // Email would need to come from customer data or be separate
+        email: customer.email || "",
       });
     }
   };

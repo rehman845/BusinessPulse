@@ -8,11 +8,21 @@ import { apiClient } from "../client";
 export interface Customer {
   id: string;
   name: string;
+  email?: string;
+  company_name?: string;
   created_at?: string;
 }
 
 export interface CustomerCreate {
   name: string;
+  email?: string;
+  company_name?: string;
+}
+
+export interface CustomerUpdate {
+  name?: string;
+  email?: string;
+  company_name?: string;
 }
 
 export const customersService = {
@@ -39,6 +49,14 @@ export const customersService = {
    */
   async createCustomer(data: CustomerCreate) {
     const response = await apiClient.post<Customer>("/customers", data);
+    return response.data;
+  },
+
+  /**
+   * Update existing customer
+   */
+  async updateCustomer(id: string, data: CustomerUpdate) {
+    const response = await apiClient.put<Customer>(`/customers/${id}`, data);
     return response.data;
   },
 

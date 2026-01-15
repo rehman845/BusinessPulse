@@ -10,6 +10,14 @@ interface Breadcrumb {
 }
 
 /**
+ * Mapping of URL segments to their display labels for breadcrumbs
+ */
+const segmentLabelMap: Record<string, string> = {
+  resources: "Partner Companies",
+  // Add other custom mappings here as needed
+};
+
+/**
  * Hook to generate breadcrumbs from the current pathname
  */
 export function useBreadcrumbs(): Breadcrumb[] {
@@ -23,7 +31,8 @@ export function useBreadcrumbs(): Breadcrumb[] {
 
     segments.forEach((segment, index) => {
       const href = "/" + segments.slice(0, index + 1).join("/");
-      const label = segment
+      // Use custom label mapping if available, otherwise generate from segment
+      const label = segmentLabelMap[segment] || segment
         .split("-")
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(" ");

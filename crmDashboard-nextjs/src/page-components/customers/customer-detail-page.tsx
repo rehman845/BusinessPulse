@@ -50,6 +50,13 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
   const [file, setFile] = useState<File | null>(null);
   const [sortField, setSortField] = useState<"filename" | "type" | "uploaded_at">("uploaded_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [isEditing, setIsEditing] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
+    company_name: "",
+  });
 
   // Get projects for this customer
   const customerProjects = useMemo(() => {
@@ -84,6 +91,11 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
       try {
         const c = await customersService.getCustomer(customerId);
         setCustomer(c);
+        setEditForm({
+          name: c.name,
+          email: c.email || "",
+          company_name: c.company_name || "",
+        });
       } catch (error: any) {
         toast.error("Failed to load customer");
       } finally {
@@ -92,6 +104,41 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
     };
     load();
   }, [customerId]);
+
+  const handleEditSave = async () => {
+    if (!editForm.name.trim()) {
+      toast.error("Customer name is required");
+      return;
+    }
+    try {
+      setSavingCustomer(true);
+      const updated = await customersService.updateCustomer(customerId, {
+        name: editForm.name.trim(),
+        email: editForm.email.trim() || undefined,
+        company_name: editForm.company_name.trim() || undefined,
+      });
+      setCustomer(updated);
+      setIsEditing(false);
+      toast.success("Customer updated");
+    } catch (error: any) {
+      toast.error("Failed to update customer", {
+        description: error.message || "Please try again",
+      });
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (customer) {
+      setEditForm({
+        name: customer.name,
+        email: customer.email || "",
+        company_name: customer.company_name || "",
+      });
+    }
+    setIsEditing(false);
+  };
 
   const fetchDocuments = async () => {
     try {
@@ -190,6 +237,58 @@ export function CustomerDetailPage({ customerId }: CustomerDetailPageProps) {
           Back to Customers
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold">Customer Details</CardTitle>
+          <CardDescription className="text-sm text-muted-foreground">
+            Keep the customer profile up to date.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Customer Name</label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Email</label>
+              <Input
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Company Name</label>
+              <Input
+                value={editForm.company_name}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, company_name: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            {isEditing ? (
+              <>
+                <Button variant="outline" onClick={handleCancelEdit} disabled={savingCustomer}>
+                  Cancel
+                </Button>
+                <Button onClick={handleEditSave} disabled={savingCustomer}>
+                  {savingCustomer ? "Saving..." : "Save Changes"}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setIsEditing(true)}>Edit Details</Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: document upload & list */}

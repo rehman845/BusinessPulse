@@ -18,6 +18,8 @@ export function CustomersPage() {
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerEmail, setNewCustomerEmail] = useState("");
+  const [newCustomerCompanyName, setNewCustomerCompanyName] = useState("");
 
   const fetchCustomers = async () => {
     try {
@@ -46,9 +48,15 @@ export function CustomersPage() {
 
     try {
       setCreating(true);
-      const newCustomer = await customersService.createCustomer({ name: newCustomerName.trim() });
+      const newCustomer = await customersService.createCustomer({
+        name: newCustomerName.trim(),
+        email: newCustomerEmail.trim() || undefined,
+        company_name: newCustomerCompanyName.trim() || undefined,
+      });
       toast.success("Customer created successfully");
       setNewCustomerName("");
+      setNewCustomerEmail("");
+      setNewCustomerCompanyName("");
       await fetchCustomers(); // Refresh list
     } catch (error: any) {
       toast.error("Failed to create customer", {
@@ -102,32 +110,55 @@ export function CustomersPage() {
           <CardDescription>Add a new customer to the system</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleCreateCustomer} className="flex flex-col sm:flex-row gap-3">
-            <Input
-              placeholder="Enter customer name..."
-              value={newCustomerName}
-              onChange={(e) => setNewCustomerName(e.target.value)}
-              disabled={creating}
-              className="flex-1"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !creating && newCustomerName.trim()) {
-                  handleCreateCustomer(e as any);
-                }
-              }}
-            />
-            <Button type="submit" disabled={creating || !newCustomerName.trim()} className="sm:w-auto w-full">
-              {creating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Customer
-                </>
-              )}
-            </Button>
+          <form onSubmit={handleCreateCustomer} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="text-sm font-medium mb-1 block">
+                  Customer Name <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  placeholder="Enter customer name..."
+                  value={newCustomerName}
+                  onChange={(e) => setNewCustomerName(e.target.value)}
+                  disabled={creating}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Email</label>
+                <Input
+                  type="email"
+                  placeholder="customer@example.com"
+                  value={newCustomerEmail}
+                  onChange={(e) => setNewCustomerEmail(e.target.value)}
+                  disabled={creating}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Company Name</label>
+                <Input
+                  placeholder="Company name (optional)"
+                  value={newCustomerCompanyName}
+                  onChange={(e) => setNewCustomerCompanyName(e.target.value)}
+                  disabled={creating}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={creating || !newCustomerName.trim()} className="w-full sm:w-auto">
+                {creating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Customer
+                  </>
+                )}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -177,17 +208,13 @@ export function CustomersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[300px]">Customer Name</TableHead>
+                    <TableHead className="w-[250px]">Customer Name</TableHead>
+                    <TableHead className="w-[200px]">Company Name</TableHead>
+                    <TableHead className="w-[200px]">Email</TableHead>
                     <TableHead className="w-[150px]">
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
                         Created At
-                      </div>
-                    </TableHead>
-                    <TableHead>
-                      <div className="flex items-center gap-2">
-                        <Hash className="h-4 w-4" />
-                        Customer ID
                       </div>
                     </TableHead>
                     <TableHead className="w-[100px] text-right">Actions</TableHead>
@@ -207,6 +234,12 @@ export function CustomersPage() {
                           </div>
                           <span className="group-hover:text-primary transition-colors">{customer.name}</span>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.company_name || "-"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.email || "-"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {customer.created_at

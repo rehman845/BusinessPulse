@@ -25,8 +25,10 @@ import type { Task, TaskFilters } from "@/types";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useProjects } from "@/hooks";
+import { useRouter } from "next/navigation";
 
 export function TasksPage() {
+  const router = useRouter();
   const { allProjectsList } = useProjects();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
@@ -226,7 +228,12 @@ export function TasksPage() {
                     <TableRow key={task.id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium">{task.title}</div>
+                          <button
+                            onClick={() => router.push(`/dashboard/projects/${task.project_id}?view=tasks`)}
+                            className="font-medium text-left hover:underline cursor-pointer text-primary"
+                          >
+                            {task.title}
+                          </button>
                           {task.description && (
                             <div className="text-sm text-muted-foreground mt-1">
                               {task.description}

@@ -10,7 +10,11 @@ router = APIRouter()
 
 @router.post("/", response_model=schemas.CustomerOut)
 def create_customer(payload: schemas.CustomerCreate, db: Session = Depends(get_db)):
-    customer = models.Customer(name=payload.name)
+    customer = models.Customer(
+        name=payload.name,
+        email=payload.email,
+        company_name=payload.company_name
+    )
     db.add(customer)
     db.commit()
     db.refresh(customer)
@@ -54,7 +58,13 @@ def update_customer(customer_id: str, payload: schemas.CustomerUpdate, db: Sessi
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     
-    customer.name = payload.name
+    if payload.name is not None:
+        customer.name = payload.name
+    if payload.email is not None:
+        customer.email = payload.email
+    if payload.company_name is not None:
+        customer.company_name = payload.company_name
+    
     customer.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(customer)

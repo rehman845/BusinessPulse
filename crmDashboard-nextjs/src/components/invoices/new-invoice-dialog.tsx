@@ -131,7 +131,7 @@ export function NewInvoiceDialog({
         ...formData,
         customerId: customer.id,
         customerName: customer.name,
-        // Customer email is not stored in Customer model, user must enter manually
+        customerEmail: customer.email || "",
       });
     }
   };
